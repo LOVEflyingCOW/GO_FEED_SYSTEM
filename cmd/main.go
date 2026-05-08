@@ -4,14 +4,12 @@ import (
 	"feedsystem_video_go/internal/config"
 	"feedsystem_video_go/internal/db"
 	"log"
-	"os"
 )
 
 func main() {
-	configPath := os.Getenv("CONFIG_PATH")
-	if configPath == "" {
-		configPath = "configs/config.yaml"
-	}
+
+	configPath := "configs/config.yaml"
+
 	log.Printf("Loading config from %s", configPath)
 	cfg, usedDefault, err := config.LoadLocalDev(configPath)
 	if err != nil {
@@ -29,6 +27,12 @@ func main() {
 	}
 	defer db.CloseDB(sqlDB)
 	log.Printf("Database connected")
+
+	err = db.AutoMigrate(sqlDB)
+	if err != nil {
+		log.Fatalf("Failed to migrate database tables: %v", err)
+	}
+	log.Println("Database tables migrated successfully")
 
 	log.Printf("Server is running on port %d", cfg.Server.Port)
 	log.Fatal("Server started") // 暂时不真正启动，等路由完成后启用
