@@ -11,15 +11,6 @@ type Account struct {
 	AvatarURL    string `gorm:"type:varchar(512)" json:"avatar_url,omitempty"` // 头像URL
 	Bio          string `gorm:"type:varchar(255)" json:"bio,omitempty"`        // 个人简介
 }
-type Account1 struct {
-	ID           uint   `gorm:"primaryKey" json:"id"`                          // 用户ID，主键
-	Username     string `gorm:"unique" json:"username"`                        // 用户名，唯一不可重复
-	Password     string `json:"-"`                                             // 密码，不返回给前端
-	Token        string `json:"-"`                                             // 登录Token，不返回给前端
-	RefreshToken string `json:"-"`                                             // 刷新Token，不返回给前端
-	AvatarURL    string `gorm:"type:varchar(512)" json:"avatar_url,omitempty"` // 头像URL
-	Bio          string `gorm:"type:varchar(255)" json:"bio,omitempty"`        // 个人简介
-}
 
 // CreateAccountRequest 注册请求参数
 type CreateAccountRequest struct {

@@ -25,7 +25,7 @@ func NewDB(cfg config.DatabaseConfig) (*gorm.DB, error) {
 // 添加了 account.Account 作为需要迁移的模型
 // 方便后续添加表而不冗余main
 func AutoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(&account.Account{}, &account.Account1{})
+	return db.AutoMigrate(&account.Account{})
 }
 
 func CloseDB(db *gorm.DB) error {
