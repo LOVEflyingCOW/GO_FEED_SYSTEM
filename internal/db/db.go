@@ -3,6 +3,7 @@ package db
 import (
 	"feedsystem_video_go/internal/account"
 	"feedsystem_video_go/internal/config"
+	"feedsystem_video_go/internal/video"
 	"fmt"
 
 	"gorm.io/driver/mysql"
@@ -25,7 +26,10 @@ func NewDB(cfg config.DatabaseConfig) (*gorm.DB, error) {
 // 添加了 account.Account 作为需要迁移的模型
 // 方便后续添加表而不冗余main
 func AutoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(&account.Account{})
+	return db.AutoMigrate(
+		&account.Account{},
+		&video.Video{},
+	)
 }
 
 func CloseDB(db *gorm.DB) error {
