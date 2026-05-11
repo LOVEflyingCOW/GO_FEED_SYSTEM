@@ -6,19 +6,22 @@ import (
 
 // Video 视频实体，对应数据库 videos 表
 type Video struct {
-	ID           uint      `gorm:"primaryKey" json:"id"`                   // 视频ID，主键
-	AccountID    uint      `json:"account_id"`                             // 发布者账户ID
-	Title        string    `gorm:"type:varchar(255)" json:"title"`         // 视频标题
-	VideoPath    string    `gorm:"type:varchar(512)" json:"video_path"`    // 视频文件路径
-	CoverPath    string    `gorm:"type:varchar(512)" json:"cover_path"`    // 封面图片路径
-	Duration     int       `json:"duration"`                               // 视频时长（秒）
-	Description  string    `gorm:"type:text" json:"description,omitempty"` // 视频描述
-	Tags         string    `gorm:"type:varchar(512)" json:"tags"`          // 标签，逗号分隔
-	ViewCount    int64     `json:"view_count"`                             // 观看次数
-	LikeCount    int64     `json:"like_count"`                             // 点赞次数
-	CommentCount int64     `json:"comment_count"`                          // 评论次数
-	CreatedAt    time.Time `json:"created_at"`                             // 创建时间
-	UpdatedAt    time.Time `json:"updated_at"`                             // 更新时间
+	ID           uint      `gorm:"primaryKey" json:"id"`                                // 视频ID，主键
+	AccountID    uint      `gorm:"column:author_id" json:"account_id"`                  // 发布者账户ID（映射到数据库的 author_id 字段）
+	Username     string    `gorm:"type:varchar(255)" json:"username"`                   // 发布者用户名
+	Title        string    `gorm:"type:varchar(255)" json:"title"`                      // 视频标题
+	VideoPath    string    `gorm:"type:varchar(512)" json:"video_path"`                 // 视频文件路径
+	CoverPath    string    `gorm:"type:varchar(512)" json:"cover_path"`                 // 封面图片路径
+	PlayURL      string    `gorm:"column:play_url;type:varchar(512)" json:"play_url"`   // 视频播放URL
+	CoverURL     string    `gorm:"column:cover_url;type:varchar(512)" json:"cover_url"` // 封面图片URL
+	Duration     int       `json:"duration"`                                            // 视频时长（秒）
+	Description  string    `gorm:"type:text" json:"description,omitempty"`              // 视频描述
+	Tags         string    `gorm:"type:varchar(512)" json:"tags"`                       // 标签，逗号分隔
+	ViewCount    int64     `json:"view_count"`                                          // 观看次数
+	LikeCount    int64     `json:"like_count"`                                          // 点赞次数
+	CommentCount int64     `json:"comment_count"`                                       // 评论次数
+	CreatedAt    time.Time `json:"created_at"`                                          // 创建时间
+	UpdatedAt    time.Time `json:"updated_at"`                                          // 更新时间
 }
 
 // UploadVideoRequest 上传视频请求结构体

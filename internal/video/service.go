@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"feedsystem_video_go/internal/account"
+	"fmt"
 	"mime/multipart"
 )
 
@@ -27,9 +28,16 @@ func (vs *VideoService) UploadVideo(ctx context.Context, accountID uint, title, 
 	if tags == "" {
 		tags = ExtractTags(title + " " + description)
 	}
-	return vs.uploadService.UploadVideo(ctx, accountID, title, description, tags, videoFile, coverFile)
+
+	account, err := vs.accountRepo.FindByID(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get account info: %w", err)
+	}
+
+	return vs.uploadService.UploadVideo(ctx, accountID, account.Username, title, description, tags, videoFile, coverFile)
 }
 
+// 避免重复点赞
 func (vs *VideoService) GetVideo(ctx context.Context, videoID uint, requestAccountID uint) (*GetVideoResponse, error) {
 	video, err := vs.videoRepository.FindByID(ctx, videoID)
 	if err != nil {

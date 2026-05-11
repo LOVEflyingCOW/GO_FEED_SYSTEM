@@ -24,9 +24,7 @@ type UploadService struct {
 }
 
 // NewUploadService 创建上传服务实例
-// videoRepository: 视频数据访问层
-// uploadDir: 文件上传目录路径
-// baseURL: 资源访问基础URL
+
 func NewUploadService(videoRepository *VideoRepository, uploadDir, baseURL string) *UploadService {
 	return &UploadService{
 		videoRepository: videoRepository,
@@ -35,16 +33,10 @@ func NewUploadService(videoRepository *VideoRepository, uploadDir, baseURL strin
 	}
 }
 
-// UploadVideo 上传视频
-// ctx: 上下文
-// accountID: 用户账号ID
-// title: 视频标题
-// description: 视频描述
-// tags: 视频标签
-// videoFile: 视频文件
+// ctx: 上下文对象
 // coverFile: 封面文件（可选）
 // 返回上传结果和错误信息
-func (us *UploadService) UploadVideo(ctx context.Context, accountID uint, title, description, tags string, videoFile *multipart.FileHeader, coverFile *multipart.FileHeader) (*UploadVideoResponse, error) {
+func (us *UploadService) UploadVideo(ctx context.Context, accountID uint, username, title, description, tags string, videoFile *multipart.FileHeader, coverFile *multipart.FileHeader) (*UploadVideoResponse, error) {
 	// 确保上传目录存在
 	if err := os.MkdirAll(us.uploadDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create upload directory: %w", err)
@@ -66,7 +58,7 @@ func (us *UploadService) UploadVideo(ctx context.Context, accountID uint, title,
 	} else {
 		coverPath, err = us.extractCover(videoPath, accountID)
 		if err != nil {
-			log.Printf("warning: failed to extract cover: %v", err)
+			return nil, fmt.Errorf("failed to extract cover: %w", err)
 		}
 	}
 
@@ -78,11 +70,18 @@ func (us *UploadService) UploadVideo(ctx context.Context, accountID uint, title,
 	}
 
 	// 构建视频实体
+	var coverURL string
+	if coverPath != "" {
+		coverURL = us.baseURL + "/" + coverPath
+	}
 	video := &Video{
 		AccountID:   accountID,
+		Username:    username,
 		Title:       title,
 		VideoPath:   videoPath,
 		CoverPath:   coverPath,
+		PlayURL:     us.baseURL + "/" + videoPath,
+		CoverURL:    coverURL,
 		Duration:    duration,
 		Description: description,
 		Tags:        tags,
@@ -91,9 +90,9 @@ func (us *UploadService) UploadVideo(ctx context.Context, accountID uint, title,
 	// 保存视频记录到数据库
 	if err := us.videoRepository.CreateVideo(ctx, video); err != nil {
 		// 创建记录失败时清理已上传的文件
-		os.Remove(videoPath)
+		os.Remove(filepath.Join(us.uploadDir, videoPath))
 		if coverPath != "" {
-			os.Remove(coverPath)
+			os.Remove(filepath.Join(us.uploadDir, coverPath))
 		}
 		return nil, fmt.Errorf("failed to create video record: %w", err)
 	}
@@ -111,7 +110,6 @@ func (us *UploadService) UploadVideo(ctx context.Context, accountID uint, title,
 
 // saveFile 保存上传的文件
 // file: 上传的文件头
-// accountID: 用户账号ID
 // fileType: 文件类型标识
 // 返回保存后的文件名和错误信息
 func (us *UploadService) saveFile(file *multipart.FileHeader, accountID uint, fileType string) (string, error) {
@@ -176,7 +174,7 @@ func (us *UploadService) getVideoDuration(videoPath string) (int, error) {
 		return 0, err
 	}
 
-	resultStr := string(result)
+	resultStr := string(result) //方便调试
 	var probeResult map[string]interface{}
 	// 解析JSON格式的探测结果
 	if err := json.Unmarshal([]byte(resultStr), &probeResult); err != nil {

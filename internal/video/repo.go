@@ -32,12 +32,12 @@ func (vr *VideoRepository) FindByAccountID(ctx context.Context, accountID uint, 
 
 	offset := (page - 1) * limit
 
-	err := vr.db.WithContext(ctx).Model(&Video{}).Where("account_id = ?", accountID).Count(&total).Error
+	err := vr.db.WithContext(ctx).Model(&Video{}).Where("author_id = ?", accountID).Count(&total).Error
 	if err != nil {
 		return nil, 0, err
 	}
 
-	err = vr.db.WithContext(ctx).Where("account_id = ?", accountID).
+	err = vr.db.WithContext(ctx).Where("author_id = ?", accountID).
 		Order("created_at DESC").
 		Offset(offset).
 		Limit(limit).
