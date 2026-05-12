@@ -3,6 +3,8 @@ package account
 import (
 	"errors"
 	"feedsystem_video_go/internal/apierror"
+	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -66,34 +68,39 @@ func (h *AccountHandler) Rename(c *gin.Context) {
 func (h *AccountHandler) ChangePassword(c *gin.Context) {
 	var req ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(apierror.ClassifyHTTPStatus(err), gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	if err := h.accountService.ChangePassword(c.Request.Context(), req.Username, req.OldPassword, req.NewPassword); err != nil {
-		// 根据错误类型返回不同状态码
-		if errors.Is(err, errors.New("user not found")) {
-			c.JSON(404, gin.H{"error": err.Error()})
-		} else if errors.Is(err, errors.New("invalid old password")) {
-			c.JSON(400, gin.H{"error": err.Error()})
-		} else {
-			c.JSON(500, gin.H{"error": "failed to change password"})
+		switch err.Error() {
+		case "user not found":
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		case "invalid old password":
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to change password"})
 		}
 		return
 	}
-	c.JSON(200, gin.H{"message": "password changed successfully"})
+	c.JSON(http.StatusOK, gin.H{"message": "password changed successfully"})
 }
 
 func (h *AccountHandler) FindByID(c *gin.Context) {
-	var req FindByIDRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(apierror.ClassifyHTTPStatus(err), gin.H{"error": err.Error()})
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid account id"})
 		return
 	}
-	if account, err := h.accountService.FindByID(c.Request.Context(), req.ID); err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+	if account, err := h.accountService.FindByID(c.Request.Context(), uint(id)); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	} else {
-		c.JSON(200, FindByIDResponse{
+		c.JSON(http.StatusOK, FindByIDResponse{
 			ID:        account.ID,
 			Username:  account.Username,
 			AvatarURL: account.AvatarURL,
@@ -103,16 +110,20 @@ func (h *AccountHandler) FindByID(c *gin.Context) {
 }
 
 func (h *AccountHandler) FindByUsername(c *gin.Context) {
-	var req FindByUsernameRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(apierror.ClassifyHTTPStatus(err), gin.H{"error": err.Error()})
+	username := c.Param("username")
+	if username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "username is required"})
 		return
 	}
-	if account, err := h.accountService.FindByUsername(c.Request.Context(), req.Username); err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+	if account, err := h.accountService.FindByUsername(c.Request.Context(), username); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	} else {
-		c.JSON(200, FindByUsernameResponse{ID: account.ID, Username: account.Username})
+		c.JSON(http.StatusOK, FindByUsernameResponse{ID: account.ID, Username: account.Username})
 	}
 }
 

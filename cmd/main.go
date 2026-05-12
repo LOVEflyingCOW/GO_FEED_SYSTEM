@@ -142,6 +142,7 @@ import (
 	"feedsystem_video_go/internal/auth"
 	"feedsystem_video_go/internal/config"
 	"feedsystem_video_go/internal/db"
+	"feedsystem_video_go/internal/like"
 	"feedsystem_video_go/internal/middleware/redis"
 	"feedsystem_video_go/internal/video"
 	"fmt"
@@ -210,6 +211,9 @@ func main() {
 	uploadService := video.NewUploadService(videoRepo, uploadDir, baseURL)
 	videoService := video.NewVideoService(videoRepo, accountRepo, uploadService, baseURL)
 	videoHandler := video.NewVideoHandler(videoService)
+	likeRepo := like.NewLikeRepository(sqlDB)
+	likeService := like.NewLikeService(likeRepo, videoRepo, redisClient)
+	likeHandler := like.NewLikeHandler(likeService)
 	log.Printf("Video module initialized")
 
 	r := gin.Default()
@@ -235,6 +239,13 @@ func main() {
 		videoGroup.DELETE("/:video_id", auth.JWTMiddleware(), videoHandler.DeleteVideo)
 	}
 
+	likeGroup := r.Group("/api/likes")
+	{
+		likeGroup.POST("/:video_id", auth.JWTMiddleware(), likeHandler.LikeVideo)
+		likeGroup.DELETE("/:video_id", auth.JWTMiddleware(), likeHandler.UnlikeVideo)
+		likeGroup.GET("/:video_id", likeHandler.GetLikeStatus)
+		likeGroup.GET("/account/:account_id", likeHandler.ListLikes)
+	}
 	//启动服务
 	log.Printf("Server is running on port %d", cfg.Server.Port)
 	if err := r.Run(fmt.Sprintf(":%d", cfg.Server.Port)); err != nil {

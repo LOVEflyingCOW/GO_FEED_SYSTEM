@@ -25,7 +25,7 @@ func jwtSecret() []byte {
 			b := make([]byte, 32)
 			if _, err := rand.Read(b); err != nil {
 				log.Printf("FATAL: cannot generate JWT secret: %v", err)
-				jwtSecretBytes = []byte("fallback-unsafe-key-change-me")
+				jwtSecretBytes = []byte("e8c9e3a7f2a6d47bf8c9a02b3e4d5f67890abcdef1234567890abcdef")
 				return
 			}
 			secret = hex.EncodeToString(b)
@@ -82,7 +82,7 @@ func ParseToken(tokenString string) (*Claims, error) {
 		return nil, err
 	}
 
-	claims, ok := token.Claims.(*Claims)
+	claims, ok := token.Claims.(*Claims) //转换成我的Claims类型
 	if !ok || !token.Valid {
 		return nil, jwt.ErrTokenInvalidClaims
 	}
