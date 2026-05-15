@@ -11,6 +11,7 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	Redis    RedisConfig    `mapstructure:"redis"`
 	RabbitMQ RabbitMQConfig `mapstructure:"rabbitmq"`
+	Storage  StorageConfig  `mapstructure:"storage"`
 }
 
 type ServerConfig struct {
@@ -39,40 +40,64 @@ type RabbitMQConfig struct {
 	Password string `mapstructure:"password"`
 }
 
-func Load(filename string) (Config, error) {
-	v := viper.New()
+type StorageConfig struct {
+	UploadDir string `mapstructure:"upload_dir"`
+	BaseURL   string `mapstructure:"base_url"`
+}
 
+// func Load(filename string) (Config, error) {
+// 	v := viper.New()
+// 	v.SetConfigFile(filename)
+// 	v.SetConfigType("yaml")
+// 	v.AutomaticEnv()
+// 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+// 	if err := v.ReadInConfig(); err != nil {
+// 		return Config{}, err
+// 	}
+
+// 	var cfg Config
+// 	return cfg, v.Unmarshal(&cfg)
+// }
+
+func LoadLocalDev(filename string) (Config, bool, error) {
+	v := viper.New()
 	v.SetConfigFile(filename)
 	v.SetConfigType("yaml")
-
 	v.AutomaticEnv()
-	//用 strings.NewReplacer 替换环境变量中的点为下划线
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
+	defaults := DefaultLocalConfig()
+	v.SetDefault("server.port", defaults.Server.Port)
+	v.SetDefault("database.host", defaults.Database.Host)
+	v.SetDefault("database.port", defaults.Database.Port)
+	v.SetDefault("database.user", defaults.Database.User)
+	v.SetDefault("database.password", defaults.Database.Password)
+	v.SetDefault("database.dbname", defaults.Database.DBName)
+	v.SetDefault("redis.host", defaults.Redis.Host)
+	v.SetDefault("redis.port", defaults.Redis.Port)
+	v.SetDefault("redis.password", defaults.Redis.Password)
+	v.SetDefault("redis.db", defaults.Redis.DB)
+	v.SetDefault("rabbitmq.host", defaults.RabbitMQ.Host)
+	v.SetDefault("rabbitmq.port", defaults.RabbitMQ.Port)
+	v.SetDefault("rabbitmq.username", defaults.RabbitMQ.Username)
+	v.SetDefault("rabbitmq.password", defaults.RabbitMQ.Password)
+	v.SetDefault("storage.upload_dir", defaults.Storage.UploadDir)
+	v.SetDefault("storage.base_url", defaults.Storage.BaseURL)
+
+	usedDefault := false
 	if err := v.ReadInConfig(); err != nil {
-		return Config{}, err
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			usedDefault = true
+		} else {
+			return Config{}, usedDefault, err
+		}
 	}
 
 	var cfg Config
-	if err := v.Unmarshal(&cfg); err != nil {
-		return Config{}, err
-	}
-	return cfg, nil
+	return cfg, usedDefault, v.Unmarshal(&cfg)
 }
 
-// LoadLocalDev 加载本地开发配置（如果配置文件不存在则使用默认配置）
-func LoadLocalDev(filename string) (Config, bool, error) {
-	cfg, err := Load(filename)
-	if err == nil {
-		return cfg, false, nil
-	}
-	if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-		return DefaultLocalConfig(), true, nil
-	}
-	return Config{}, false, err
-}
-
-// 环境变量 > 配置文件 > 默认值
 func DefaultLocalConfig() Config {
 	return Config{
 		Server: ServerConfig{
@@ -95,6 +120,10 @@ func DefaultLocalConfig() Config {
 			Port:     5672,
 			Username: "guest",
 			Password: "guest",
+		},
+		Storage: StorageConfig{
+			UploadDir: "./uploads",
+			BaseURL:   "http://localhost:8081/uploads",
 		},
 	}
 }

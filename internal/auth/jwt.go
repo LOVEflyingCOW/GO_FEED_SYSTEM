@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"feedsystem_video_go/internal/apierror"
 	"log"
 	"os"
 	"sync"
@@ -94,19 +95,19 @@ func JWTMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.AbortWithStatusJSON(401, gin.H{"error": "authorization header required"})
+			apierror.AbortWithError(c, apierror.ErrAuthorizationHeaderMissing)
 			return
 		}
 
 		if len(authHeader) < 7 || authHeader[:7] != "Bearer " {
-			c.AbortWithStatusJSON(401, gin.H{"error": "invalid authorization format"})
+			apierror.AbortWithError(c, apierror.ErrInvalidAuthorizationFormat)
 			return
 		}
 
 		tokenString := authHeader[7:]
 		claims, err := ParseToken(tokenString)
 		if err != nil {
-			c.AbortWithStatusJSON(401, gin.H{"error": "invalid token: " + err.Error()})
+			apierror.AbortWithError(c, apierror.ErrInvalidToken)
 			return
 		}
 

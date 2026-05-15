@@ -19,3 +19,7 @@ rabbitmq:
   port: 5672
   username: admin
   password: password123
+
+storage:
+  upload_dir: ./uploads
+  base_url: http://localhost:8081/uploads

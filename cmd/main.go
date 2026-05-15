@@ -198,18 +198,9 @@ func main() {
 	log.Printf("Account module initialized")
 
 	// 初始化视频模块
-	uploadDir := os.Getenv("UPLOAD_DIR")
-	if uploadDir == "" {
-		uploadDir = "./uploads"
-	}
-	baseURL := os.Getenv("BASE_URL")
-	if baseURL == "" {
-		baseURL = "http://localhost:8080/uploads"
-	}
-
 	videoRepo := video.NewVideoRepository(sqlDB)
-	uploadService := video.NewUploadService(videoRepo, uploadDir, baseURL)
-	videoService := video.NewVideoService(videoRepo, accountRepo, uploadService, baseURL)
+	uploadService := video.NewUploadService(videoRepo, cfg.Storage.UploadDir, cfg.Storage.BaseURL)
+	videoService := video.NewVideoService(videoRepo, accountRepo, uploadService, cfg.Storage.BaseURL)
 	videoHandler := video.NewVideoHandler(videoService)
 	likeRepo := like.NewLikeRepository(sqlDB)
 	likeService := like.NewLikeService(likeRepo, videoRepo, redisClient)

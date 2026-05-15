@@ -1,14 +1,12 @@
 package video
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 
 	"feedsystem_video_go/internal/apierror"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 type VideoHandler struct {
@@ -19,16 +17,17 @@ func NewVideoHandler(videoService *VideoService) *VideoHandler {
 	return &VideoHandler{videoService: videoService}
 }
 
+// UploadVideo 上传视频
 func (h *VideoHandler) UploadVideo(c *gin.Context) {
 	accountID, err := getAccountID(c)
 	if err != nil {
-		c.JSON(apierror.ClassifyHTTPStatus(err), gin.H{"error": err.Error()})
+		apierror.AbortWithError(c, err)
 		return
 	}
 
 	title := c.PostForm("title")
 	if title == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "title is required"})
+		apierror.AbortWithError(c, apierror.ErrTitleRequired)
 		return
 	}
 	description := c.PostForm("description")
@@ -36,7 +35,7 @@ func (h *VideoHandler) UploadVideo(c *gin.Context) {
 
 	videoFile, err := c.FormFile("video")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "video file is required"})
+		apierror.AbortWithError(c, apierror.ErrVideoFileRequired)
 		return
 	}
 
@@ -44,18 +43,19 @@ func (h *VideoHandler) UploadVideo(c *gin.Context) {
 
 	resp, err := h.videoService.UploadVideo(c.Request.Context(), accountID, title, description, tags, videoFile, coverFile)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apierror.AbortWithError(c, err)
 		return
 	}
 
 	c.JSON(http.StatusOK, resp)
 }
 
+// GetVideo 获取视频详情
 func (h *VideoHandler) GetVideo(c *gin.Context) {
 	videoIDStr := c.Param("video_id")
 	videoID, err := strconv.ParseUint(videoIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid video_id"})
+		apierror.AbortWithError(c, apierror.ErrInvalidID)
 		return
 	}
 
@@ -63,22 +63,19 @@ func (h *VideoHandler) GetVideo(c *gin.Context) {
 
 	resp, err := h.videoService.GetVideo(c.Request.Context(), uint(videoID), requestAccountID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "video not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apierror.AbortWithError(c, err)
 		return
 	}
 
 	c.JSON(http.StatusOK, resp)
 }
 
+// ListVideos 获取用户视频列表
 func (h *VideoHandler) ListVideos(c *gin.Context) {
 	accountIDStr := c.Param("account_id")
 	accountID, err := strconv.ParseUint(accountIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid account_id"})
+		apierror.AbortWithError(c, apierror.ErrInvalidID)
 		return
 	}
 
@@ -96,48 +93,46 @@ func (h *VideoHandler) ListVideos(c *gin.Context) {
 
 	resp, err := h.videoService.ListVideos(c.Request.Context(), uint(accountID), page, limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apierror.AbortWithError(c, err)
 		return
 	}
 
 	c.JSON(http.StatusOK, resp)
 }
 
+// DeleteVideo 删除视频
 func (h *VideoHandler) DeleteVideo(c *gin.Context) {
 	accountID, err := getAccountID(c)
 	if err != nil {
-		c.JSON(apierror.ClassifyHTTPStatus(err), gin.H{"error": err.Error()})
+		apierror.AbortWithError(c, err)
 		return
 	}
 
 	videoIDStr := c.Param("video_id")
 	videoID, err := strconv.ParseUint(videoIDStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid video_id"})
+		apierror.AbortWithError(c, apierror.ErrInvalidID)
 		return
 	}
 
 	err = h.videoService.DeleteVideo(c.Request.Context(), uint(videoID), accountID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "video not found"})
-			return
-		}
-		if errors.Is(err, errors.New("unauthorized to delete this video")) {
-			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apierror.AbortWithError(c, err)
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "video deleted"})
 }
 
+// getAccountID 从上下文获取用户ID
 func getAccountID(c *gin.Context) (uint, error) {
 	accountID, exists := c.Get("accountID")
 	if !exists {
-		return 0, errors.New("account not authenticated")
+		return 0, apierror.ErrUnauthorized
 	}
-	return accountID.(uint), nil
+	id, ok := accountID.(uint)
+	if !ok {
+		return 0, apierror.ErrValidation
+	}
+	return id, nil
 }

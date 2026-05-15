@@ -114,3 +114,12 @@ func (ar *AccountRepository) FindAll(ctx context.Context) ([]*Account, error) {
 	}
 	return accounts, nil
 }
+
+// FindByIDs 批量查询用户（避免N+1查询）
+func (ar *AccountRepository) FindByIDs(ctx context.Context, ids []uint) ([]*Account, error) {
+	var accounts []*Account
+	if err := ar.db.WithContext(ctx).Where("id IN ?", ids).Find(&accounts).Error; err != nil {
+		return nil, err
+	}
+	return accounts, nil
+}

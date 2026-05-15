@@ -2,6 +2,7 @@ package db
 
 import (
 	"feedsystem_video_go/internal/account"
+	"feedsystem_video_go/internal/comment"
 	"feedsystem_video_go/internal/config"
 	"feedsystem_video_go/internal/like"
 	"feedsystem_video_go/internal/video"
@@ -31,6 +32,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&account.Account{},
 		&video.Video{},
 		&like.Like{},
+		&comment.Comment{},
 	)
 }
 

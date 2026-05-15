@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"feedsystem_video_go/internal/apierror"
 	rediscache "feedsystem_video_go/internal/middleware/redis"
 	"feedsystem_video_go/internal/video"
 
@@ -27,23 +28,24 @@ func NewLikeService(likeRepository *LikeRepository, videoRepository *video.Video
 	}
 }
 
+// LikeVideo 点赞视频
 func (ls *LikeService) LikeVideo(ctx context.Context, accountID, videoID uint) (*LikeResponse, error) {
-	// 1. 先校验视频是否存在
+	// 校验视频是否存在
 	_, err := ls.videoRepository.FindByID(ctx, videoID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("video not found")
+			return nil, apierror.ErrVideoNotFound
 		}
 		return nil, err
 	}
 
-	// 2.判断用户是否已经点过赞
+	// 判断用户是否已经点过赞
 	exists, err := ls.likeRepository.ExistsLike(ctx, accountID, videoID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 3. 已经点过赞：直接返回，不新增、不涨点赞数、不更缓存
+	// 已经点过赞：直接返回
 	if exists {
 		likeCount, _ := ls.likeRepository.CountByVideoID(ctx, videoID)
 		return &LikeResponse{
@@ -53,7 +55,7 @@ func (ls *LikeService) LikeVideo(ctx context.Context, accountID, videoID uint) (
 		}, nil
 	}
 
-	// 4. 没点过赞：才走正常点赞流程
+	// 没点过赞：走正常点赞流程
 	like := &Like{
 		AccountID: accountID,
 		VideoID:   videoID,
@@ -66,7 +68,7 @@ func (ls *LikeService) LikeVideo(ctx context.Context, accountID, videoID uint) (
 
 	// 视频数据库点赞数 +1
 	if err := ls.videoRepository.IncreaseLikeCount(ctx, videoID); err != nil {
-		log.Printf("failed to increase like count: %v", err)
+		log.Printf("[WARN] [LikeService] failed to increase like count: %v", err)
 	}
 
 	// Redis 缓存点赞数 +1
@@ -85,16 +87,17 @@ func (ls *LikeService) LikeVideo(ctx context.Context, accountID, videoID uint) (
 	}, nil
 }
 
+// UnlikeVideo 取消点赞
 func (ls *LikeService) UnlikeVideo(ctx context.Context, accountID, videoID uint) (*LikeResponse, error) {
 	if err := ls.likeRepository.DeleteLike(ctx, accountID, videoID); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("like not found")
+			return nil, apierror.ErrLikeNotFound
 		}
 		return nil, err
 	}
 
 	if err := ls.videoRepository.DecreaseLikeCount(ctx, videoID); err != nil {
-		log.Printf("failed to decrease like count: %v", err)
+		log.Printf("[WARN] [LikeService] failed to decrease like count: %v", err)
 	}
 
 	if ls.cache != nil {
@@ -112,6 +115,7 @@ func (ls *LikeService) UnlikeVideo(ctx context.Context, accountID, videoID uint)
 	}, nil
 }
 
+// GetLikeStatus 获取点赞状态
 func (ls *LikeService) GetLikeStatus(ctx context.Context, accountID, videoID uint) (*LikeResponse, error) {
 	isLiked, err := ls.likeRepository.ExistsLike(ctx, accountID, videoID)
 	if err != nil {
@@ -119,7 +123,7 @@ func (ls *LikeService) GetLikeStatus(ctx context.Context, accountID, videoID uin
 	}
 
 	var likeCount int64
-	cacheHit := false // 标记是否从缓存拿到
+	cacheHit := false
 
 	if ls.cache != nil {
 		cacheCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
@@ -127,14 +131,14 @@ func (ls *LikeService) GetLikeStatus(ctx context.Context, accountID, videoID uin
 		countStr, err := ls.cache.Get(cacheCtx, ls.cache.Key("video:%d:likes", videoID))
 		if err == nil {
 			likeCount, _ = strconv.ParseInt(countStr, 10, 64)
-			cacheHit = true // 缓存命中！
+			cacheHit = true
 		}
 	}
 
-	// 只有缓存没命中，才去查数据库，而不是用0判断
 	if !cacheHit {
 		likeCount, _ = ls.likeRepository.CountByVideoID(ctx, videoID)
 	}
+
 	return &LikeResponse{
 		VideoID:   videoID,
 		LikeCount: likeCount,
@@ -142,6 +146,7 @@ func (ls *LikeService) GetLikeStatus(ctx context.Context, accountID, videoID uin
 	}, nil
 }
 
+// ListLikes 获取用户点赞列表
 func (ls *LikeService) ListLikes(ctx context.Context, accountID uint, page, limit int) (*LikeListResponse, error) {
 	if page < 1 {
 		page = 1
