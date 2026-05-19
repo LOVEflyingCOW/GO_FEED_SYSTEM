@@ -140,10 +140,15 @@ import (
 	"context"
 	"feedsystem_video_go/internal/account"
 	"feedsystem_video_go/internal/auth"
+	"feedsystem_video_go/internal/comment"
 	"feedsystem_video_go/internal/config"
 	"feedsystem_video_go/internal/db"
 	"feedsystem_video_go/internal/like"
 	"feedsystem_video_go/internal/middleware/redis"
+	mqcomment "feedsystem_video_go/internal/mq/comment"
+	mqlike "feedsystem_video_go/internal/mq/like"
+	mqpopularity "feedsystem_video_go/internal/mq/popularity"
+	"feedsystem_video_go/internal/mq/rabbitmq"
 	"feedsystem_video_go/internal/video"
 	"fmt"
 	"log"
@@ -191,6 +196,16 @@ func main() {
 	defer redisClient.Close()
 	log.Printf("Redis connected")
 
+	// 连接RabbitMQ
+	rabbitMQClient, err := rabbitmq.NewClient(cfg.RabbitMQ)
+	if err != nil {
+		log.Printf("Warning: Failed to connect RabbitMQ: %v", err)
+		rabbitMQClient = nil
+	} else {
+		defer rabbitMQClient.Close()
+		log.Printf("RabbitMQ connected")
+	}
+
 	// 初始化账户模块
 	accountRepo := account.NewAccountRepository(sqlDB)
 	accountService := account.NewAccountService(accountRepo, redisClient)
@@ -202,10 +217,38 @@ func main() {
 	uploadService := video.NewUploadService(videoRepo, cfg.Storage.UploadDir, cfg.Storage.BaseURL)
 	videoService := video.NewVideoService(videoRepo, accountRepo, uploadService, cfg.Storage.BaseURL)
 	videoHandler := video.NewVideoHandler(videoService)
+	log.Printf("Video module initialized")
+
+	// 初始化评论模块
+	commentRepo := comment.NewCommentRepository(sqlDB)
+	commentService := comment.NewCommentService(commentRepo, accountRepo, videoRepo)
+	commentHandler := comment.NewCommentHandler(commentService)
+	log.Printf("Comment module initialized")
+
+	// 初始化点赞模块
 	likeRepo := like.NewLikeRepository(sqlDB)
 	likeService := like.NewLikeService(likeRepo, videoRepo, redisClient)
 	likeHandler := like.NewLikeHandler(likeService)
-	log.Printf("Video module initialized")
+	log.Printf("Like module initialized")
+
+	// 初始化MQ模块
+	if rabbitMQClient != nil {
+		_, err := mqlike.NewLikeMQ(rabbitMQClient)
+		if err != nil {
+			log.Printf("Warning: Failed to initialize LikeMQ: %v", err)
+		}
+
+		_, err = mqcomment.NewCommentMQ(rabbitMQClient)
+		if err != nil {
+			log.Printf("Warning: Failed to initialize CommentMQ: %v", err)
+		}
+
+		_, err = mqpopularity.NewPopularityMQ(rabbitMQClient)
+		if err != nil {
+			log.Printf("Warning: Failed to initialize PopularityMQ: %v", err)
+		}
+		log.Printf("Message queues initialized")
+	}
 
 	r := gin.Default()
 
@@ -225,6 +268,7 @@ func main() {
 	videoGroup := r.Group("/api/videos")
 	{
 		videoGroup.POST("/upload", auth.JWTMiddleware(), videoHandler.UploadVideo)
+		videoGroup.GET("/:video_id/comments", commentHandler.ListComments)
 		videoGroup.GET("/:video_id", videoHandler.GetVideo)
 		videoGroup.GET("/account/:account_id", videoHandler.ListVideos)
 		videoGroup.DELETE("/:video_id", auth.JWTMiddleware(), videoHandler.DeleteVideo)
@@ -237,6 +281,14 @@ func main() {
 		likeGroup.GET("/:video_id", likeHandler.GetLikeStatus)
 		likeGroup.GET("/account/:account_id", likeHandler.ListLikes)
 	}
+
+	// 评论模块路由
+	commentGroup := r.Group("/api/comments")
+	{
+		commentGroup.POST("", auth.JWTMiddleware(), commentHandler.CreateComment)
+		commentGroup.DELETE("/:comment_id", auth.JWTMiddleware(), commentHandler.DeleteComment)
+	}
+
 	//启动服务
 	log.Printf("Server is running on port %d", cfg.Server.Port)
 	if err := r.Run(fmt.Sprintf(":%d", cfg.Server.Port)); err != nil {
