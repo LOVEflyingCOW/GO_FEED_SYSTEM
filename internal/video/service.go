@@ -12,38 +12,69 @@ import (
 	"gorm.io/gorm"
 )
 
+// TimelineService 定义时间线服务接口
+type TimelineService interface {
+	AddToTimeline(ctx context.Context, videoID uint) error
+}
+
 type VideoService struct {
 	videoRepository *VideoRepository
 	accountRepo     *account.AccountRepository
 	uploadService   *UploadService
 	baseURL         string
+	timeline        TimelineService //添加时间线服务字段
 }
 
-func NewVideoService(videoRepository *VideoRepository, accountRepo *account.AccountRepository, uploadService *UploadService, baseURL string) *VideoService {
+func NewVideoService(videoRepository *VideoRepository, accountRepo *account.AccountRepository, uploadService *UploadService, baseURL string, timeline TimelineService) *VideoService {
 	return &VideoService{
 		videoRepository: videoRepository,
 		accountRepo:     accountRepo,
 		uploadService:   uploadService,
 		baseURL:         baseURL,
+		timeline:        timeline, //传入时间线服务
 	}
 }
 
 // UploadVideo 上传视频
-func (vs *VideoService) UploadVideo(ctx context.Context, accountID uint, title, description, tags string, videoFile *multipart.FileHeader, coverFile *multipart.FileHeader) (*UploadVideoResponse, error) {
+func (vs *VideoService) UploadVideo(
+	ctx context.Context,
+	accountID uint,
+	title, description, tags string,
+	videoFile *multipart.FileHeader,
+	coverFile *multipart.FileHeader,
+) (*UploadVideoResponse, error) {
+	// 1. 必传参数校验
 	if title == "" {
 		return nil, errors.New("title is required")
 	}
 
+	// 2. 自动生成标签
 	if tags == "" {
 		tags = ExtractTags(title + " " + description)
 	}
 
+	// 3. 查询用户信息（业务需要）
 	acc, err := vs.accountRepo.FindByID(ctx, accountID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get account info: %w", err)
+		return nil, fmt.Errorf("获取用户信息失败: %w", err)
 	}
 
-	return vs.uploadService.UploadVideo(ctx, accountID, acc.Username, title, description, tags, videoFile, coverFile)
+	// 4. 执行上传
+	resp, err := vs.uploadService.UploadVideo(
+		ctx, accountID, acc.Username, title, description, tags, videoFile, coverFile,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// 5. 异步推送到时间线（不阻塞响应）
+	go func(vid uint) {
+		if vs.timeline != nil {
+			_ = vs.timeline.AddToTimeline(context.Background(), vid)
+		}
+	}(resp.VideoID)
+
+	return resp, nil
 }
 
 // GetVideo 获取视频详情

@@ -89,3 +89,27 @@ func (vr *VideoRepository) FindLatest(ctx context.Context, limit int) ([]*Video,
 	err := vr.db.WithContext(ctx).Order("created_at DESC").Limit(limit).Find(&videos).Error
 	return videos, err
 }
+
+// FindByAccountIDs 批量查询多个用户的视频
+func (vr *VideoRepository) FindByAccountIDs(ctx context.Context, accountIDs []uint, limit, offset int) ([]*Video, error) {
+	var videos []*Video
+	err := vr.db.WithContext(ctx).
+		Where("author_id IN ?", accountIDs).
+		Order("created_at DESC").
+		Offset(offset).
+		Limit(limit).
+		Find(&videos).Error
+	return videos, err
+}
+
+// FindByTag 按标签查询视频
+func (vr *VideoRepository) FindByTag(ctx context.Context, tag string, limit, offset int) ([]*Video, error) {
+	var videos []*Video
+	err := vr.db.WithContext(ctx).
+		Where("tags LIKE ?", "%"+tag+"%").
+		Order("created_at DESC").
+		Offset(offset).
+		Limit(limit).
+		Find(&videos).Error
+	return videos, err
+}

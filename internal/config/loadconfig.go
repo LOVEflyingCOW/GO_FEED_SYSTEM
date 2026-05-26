@@ -118,8 +118,8 @@ func DefaultLocalConfig() Config {
 		RabbitMQ: RabbitMQConfig{
 			Host:     "localhost",
 			Port:     5672,
-			Username: "guest",
-			Password: "guest",
+			Username: "admin",
+			Password: "password123",
 		},
 		Storage: StorageConfig{
 			UploadDir: "./uploads",

@@ -30,6 +30,7 @@ func NewDB(cfg config.DatabaseConfig) (*gorm.DB, error) {
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&account.Account{},
+		&account.Follow{},
 		&video.Video{},
 		&like.Like{},
 		&comment.Comment{},
