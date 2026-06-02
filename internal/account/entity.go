@@ -70,8 +70,9 @@ type LoginResponse struct {
 
 // UpdateProfileRequest 更新个人资料请求
 type UpdateProfileRequest struct {
-	AvatarURL string `json:"avatar_url"` // 头像地址
-	Bio       string `json:"bio"`        // 个人简介
+	Username  string `json:"username,omitempty"` // 用户名（可选）
+	AvatarURL string `json:"avatar_url"`         // 头像地址
+	Bio       string `json:"bio,omitempty"`      // 个人简介（可选）
 }
 
 // RefreshRequest 刷新Token请求

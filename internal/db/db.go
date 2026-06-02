@@ -5,6 +5,8 @@ import (
 	"feedsystem_video_go/internal/comment"
 	"feedsystem_video_go/internal/config"
 	"feedsystem_video_go/internal/like"
+	"feedsystem_video_go/internal/message"
+	"feedsystem_video_go/internal/social"
 	"feedsystem_video_go/internal/video"
 	"fmt"
 
@@ -34,6 +36,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&video.Video{},
 		&like.Like{},
 		&comment.Comment{},
+		&social.Follow{},
+		&message.Message{},
 	)
 }
 

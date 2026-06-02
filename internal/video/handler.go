@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"feedsystem_video_go/internal/apierror"
+	"feedsystem_video_go/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,7 +20,7 @@ func NewVideoHandler(videoService *VideoService) *VideoHandler {
 
 // UploadVideo 上传视频
 func (h *VideoHandler) UploadVideo(c *gin.Context) {
-	accountID, err := getAccountID(c)
+	accountID, err := middleware.GetAccountID(c)
 	if err != nil {
 		apierror.AbortWithError(c, err)
 		return
@@ -59,7 +60,7 @@ func (h *VideoHandler) GetVideo(c *gin.Context) {
 		return
 	}
 
-	requestAccountID, _ := getAccountID(c)
+	requestAccountID, _ := middleware.GetAccountID(c)
 
 	resp, err := h.videoService.GetVideo(c.Request.Context(), uint(videoID), requestAccountID)
 	if err != nil {
@@ -100,9 +101,27 @@ func (h *VideoHandler) ListVideos(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// ReportView 上报视频播放
+func (h *VideoHandler) ReportView(c *gin.Context) {
+	videoIDStr := c.Param("video_id")
+	videoID, err := strconv.ParseUint(videoIDStr, 10, 64)
+	if err != nil {
+		apierror.AbortWithError(c, apierror.ErrInvalidID)
+		return
+	}
+
+	err = h.videoService.ReportView(c.Request.Context(), uint(videoID))
+	if err != nil {
+		apierror.AbortWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "view reported"})
+}
+
 // DeleteVideo 删除视频
 func (h *VideoHandler) DeleteVideo(c *gin.Context) {
-	accountID, err := getAccountID(c)
+	accountID, err := middleware.GetAccountID(c)
 	if err != nil {
 		apierror.AbortWithError(c, err)
 		return
@@ -122,17 +141,4 @@ func (h *VideoHandler) DeleteVideo(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "video deleted"})
-}
-
-// getAccountID 从上下文获取用户ID
-func getAccountID(c *gin.Context) (uint, error) {
-	accountID, exists := c.Get("accountID")
-	if !exists {
-		return 0, apierror.ErrUnauthorized
-	}
-	id, ok := accountID.(uint)
-	if !ok {
-		return 0, apierror.ErrValidation
-	}
-	return id, nil
 }

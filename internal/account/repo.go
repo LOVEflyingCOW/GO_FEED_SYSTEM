@@ -123,3 +123,15 @@ func (ar *AccountRepository) FindByIDs(ctx context.Context, ids []uint) ([]*Acco
 	}
 	return accounts, nil
 }
+
+// SearchByUsername 搜索用户（模糊匹配）
+func (ar *AccountRepository) SearchByUsername(ctx context.Context, keyword string, limit int) ([]*Account, error) {
+	var accounts []*Account
+	if err := ar.db.WithContext(ctx).
+		Where("username LIKE ?", "%"+keyword+"%").
+		Limit(limit).
+		Find(&accounts).Error; err != nil {
+		return nil, err
+	}
+	return accounts, nil
+}

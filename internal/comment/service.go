@@ -9,6 +9,7 @@ import (
 
 	"feedsystem_video_go/internal/account"
 	"feedsystem_video_go/internal/apierror"
+	"feedsystem_video_go/internal/pkg/logger"
 	"feedsystem_video_go/internal/video"
 
 	"gorm.io/gorm"
@@ -117,7 +118,7 @@ func (cs *CommentService) DeleteComment(ctx context.Context, commentID, accountI
 
 	// 更新视频评论数
 	if err := cs.videoRepository.DecreaseCommentCount(ctx, comment.VideoID); err != nil {
-		log.Printf("[WARN] [CommentService] failed to decrease comment count: %v", err)
+		logger.Warn("CommentService", "failed to decrease comment count: %v", err)
 	}
 
 	return nil
@@ -173,7 +174,7 @@ func (cs *CommentService) ListComments(ctx context.Context, videoID uint, page, 
 	if len(accountIDs) > 0 {
 		accounts, err := cs.accountRepository.FindByIDs(ctx, accountIDs)
 		if err != nil {
-			log.Printf("[WARN] [CommentService] failed to find accounts: %v", err)
+			logger.Warn("CommentService", "failed to find accounts: %v", err)
 		} else {
 			for _, acc := range accounts {
 				accountMap[acc.ID] = acc
@@ -186,7 +187,7 @@ func (cs *CommentService) ListComments(ctx context.Context, videoID uint, page, 
 	if len(replyToIDs) > 0 {
 		parentComments, err := cs.commentRepository.FindByIDs(ctx, replyToIDs)
 		if err != nil {
-			log.Printf("[WARN] [CommentService] failed to find parent comments: %v", err)
+			logger.Warn("CommentService", "failed to find parent comments: %v", err)
 		} else {
 			for _, pc := range parentComments {
 				parentCommentMap[pc.ID] = pc

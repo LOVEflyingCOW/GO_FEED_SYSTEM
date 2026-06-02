@@ -12,6 +12,7 @@ type Config struct {
 	Redis    RedisConfig    `mapstructure:"redis"`
 	RabbitMQ RabbitMQConfig `mapstructure:"rabbitmq"`
 	Storage  StorageConfig  `mapstructure:"storage"`
+	JWT      JWTConfig      `mapstructure:"jwt"`
 }
 
 type ServerConfig struct {
@@ -43,6 +44,10 @@ type RabbitMQConfig struct {
 type StorageConfig struct {
 	UploadDir string `mapstructure:"upload_dir"`
 	BaseURL   string `mapstructure:"base_url"`
+}
+
+type JWTConfig struct {
+	Secret string `mapstructure:"secret"`
 }
 
 // func Load(filename string) (Config, error) {

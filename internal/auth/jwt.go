@@ -6,7 +6,6 @@ import (
 	"errors"
 	"feedsystem_video_go/internal/apierror"
 	"log"
-	"os"
 	"sync"
 	"time"
 
@@ -19,9 +18,8 @@ var (
 	jwtSecretOnce  sync.Once
 )
 
-func jwtSecret() []byte {
+func SetJWTSecret(secret string) {
 	jwtSecretOnce.Do(func() {
-		secret := os.Getenv("JWT_SECRET")
 		if secret == "" {
 			b := make([]byte, 32)
 			if _, err := rand.Read(b); err != nil {
@@ -34,6 +32,12 @@ func jwtSecret() []byte {
 		}
 		jwtSecretBytes = []byte(secret)
 	})
+}
+
+func jwtSecret() []byte {
+	if jwtSecretBytes == nil {
+		SetJWTSecret("")
+	}
 	return jwtSecretBytes
 }
 

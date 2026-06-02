@@ -9,12 +9,17 @@ import (
 	"feedsystem_video_go/internal/db"
 	"feedsystem_video_go/internal/feed"
 	"feedsystem_video_go/internal/like"
+	"feedsystem_video_go/internal/message"
 	"feedsystem_video_go/internal/middleware/redis"
 	mqcomment "feedsystem_video_go/internal/mq/comment"
 	mqlike "feedsystem_video_go/internal/mq/like"
 	mqpopularity "feedsystem_video_go/internal/mq/popularity"
 	"feedsystem_video_go/internal/mq/rabbitmq"
+	"feedsystem_video_go/internal/router"
+	"feedsystem_video_go/internal/social"
+	"feedsystem_video_go/internal/sse"
 	"feedsystem_video_go/internal/video"
+	"feedsystem_video_go/internal/worker"
 	"fmt"
 	"log"
 	"os"
@@ -38,6 +43,9 @@ func main() {
 	} else {
 		log.Printf("Config loaded from file: %s", configPath)
 	}
+
+	// 设置JWT密钥
+	auth.SetJWTSecret(cfg.JWT.Secret)
 
 	// 连接数据库
 	sqlDB, err := db.NewDB(cfg.Database)
@@ -81,11 +89,13 @@ func main() {
 	videoRepo := video.NewVideoRepository(sqlDB)
 	uploadService := video.NewUploadService(videoRepo, cfg.Storage.UploadDir, cfg.Storage.BaseURL)
 
-	//先初始化 feed 模块（用于时间线）
+	//初始化点赞模块（用于feed）
 	likeRepo := like.NewLikeRepository(sqlDB)
+
+	//初始化Feed模块（用于时间线）
 	feedService := feed.NewFeedService(videoRepo, accountRepo, likeRepo, redisClient, cfg.Storage.BaseURL)
 
-	//更新 VideoService 初始化，传入 feedService 作为时间线服务
+	//初始化视频服务（传入时间线服务）
 	videoService := video.NewVideoService(videoRepo, accountRepo, uploadService, cfg.Storage.BaseURL, feedService)
 	videoHandler := video.NewVideoHandler(videoService)
 	log.Printf("Video module initialized")
@@ -96,19 +106,38 @@ func main() {
 	commentHandler := comment.NewCommentHandler(commentService)
 	log.Printf("Comment module initialized")
 
-	//初始化点赞模块
+	//初始化点赞模块（完整）
 	likeService := like.NewLikeService(likeRepo, videoRepo, redisClient)
 	likeHandler := like.NewLikeHandler(likeService)
 	log.Printf("Like module initialized")
 
+	//初始化社交模块（关注功能）
+	socialRepo := social.NewSocialRepository(sqlDB)
+	socialService := social.NewSocialService(socialRepo, accountRepo)
+	socialHandler := social.NewSocialHandler(socialService)
+	log.Printf("Social module initialized")
+
+	//初始化SSE Hub（实时通知）
+	sseHub := sse.NewHub()
+	go sseHub.Run()
+	log.Printf("SSE Hub initialized")
+
+	//初始化消息模块
+	messageRepo := message.NewMessageRepository(sqlDB)
+	messageService := message.NewMessageService(messageRepo, accountRepo, sseHub)
+	messageHandler := message.NewMessageHandler(messageService)
+	log.Printf("Message module initialized")
+
 	//初始化MQ模块
+	var likeMQ *mqlike.LikeMQ
+	var commentMQ *mqcomment.CommentMQ
 	if rabbitMQClient != nil {
-		_, err := mqlike.NewLikeMQ(rabbitMQClient)
+		likeMQ, err = mqlike.NewLikeMQ(rabbitMQClient)
 		if err != nil {
 			log.Printf("Warning: Failed to initialize LikeMQ: %v", err)
 		}
 
-		_, err = mqcomment.NewCommentMQ(rabbitMQClient)
+		commentMQ, err = mqcomment.NewCommentMQ(rabbitMQClient)
 		if err != nil {
 			log.Printf("Warning: Failed to initialize CommentMQ: %v", err)
 		}
@@ -118,59 +147,47 @@ func main() {
 			log.Printf("Warning: Failed to initialize PopularityMQ: %v", err)
 		}
 		log.Printf("Message queues initialized")
+
+		// 启动Worker
+		ctx := context.Background()
+
+		// Like Worker
+		if likeMQ != nil {
+			likeWorker := worker.NewLikeWorker(likeService, likeMQ)
+			go likeWorker.Run(ctx)
+			log.Printf("LikeWorker started")
+		}
+
+		// Comment Worker
+		if commentMQ != nil {
+			commentWorker := worker.NewCommentWorker(sseHub, commentMQ)
+			go commentWorker.Run(ctx)
+			log.Printf("CommentWorker started")
+		}
 	}
 
-	// 初始化 Feed Handler
+	// 初始化Feed Handler
 	feedHandler := feed.NewFeedHandler(feedService)
 	log.Printf("Feed module initialized")
 
+	// 创建路由器
 	r := gin.Default()
 
-	accountGroup := r.Group("/api/accounts")
-	{
-		accountGroup.POST("/register", accountHandler.CreateAccount)
-		accountGroup.POST("/login", accountHandler.Login)
-		accountGroup.GET("/:id", accountHandler.FindByID)
-		accountGroup.GET("/username/:username", accountHandler.FindByUsername)
+	// 注册路由（使用router模块）
+	router := router.NewRouter(
+		accountHandler,
+		videoHandler,
+		likeHandler,
+		commentHandler,
+		feedHandler,
+		socialHandler,
+		messageHandler,
+		sseHub,
+	)
+	router.RegisterRoutes(r)
 
-		accountGroup.POST("/logout", auth.JWTMiddleware(), accountHandler.Logout)
-		accountGroup.POST("/refresh", accountHandler.Refresh)
-		accountGroup.POST("/rename", auth.JWTMiddleware(), accountHandler.Rename)
-		accountGroup.POST("/change-password", auth.JWTMiddleware(), accountHandler.ChangePassword)
-	}
-
-	videoGroup := r.Group("/api/videos")
-	{
-		videoGroup.POST("/upload", auth.JWTMiddleware(), videoHandler.UploadVideo)
-		videoGroup.GET("/:video_id/comments", commentHandler.ListComments)
-		videoGroup.GET("/:video_id", videoHandler.GetVideo)
-		videoGroup.GET("/account/:account_id", videoHandler.ListVideos)
-		videoGroup.DELETE("/:video_id", auth.JWTMiddleware(), videoHandler.DeleteVideo)
-	}
-
-	likeGroup := r.Group("/api/likes")
-	{
-		likeGroup.POST("/:video_id", auth.JWTMiddleware(), likeHandler.LikeVideo)
-		likeGroup.DELETE("/:video_id", auth.JWTMiddleware(), likeHandler.UnlikeVideo)
-		likeGroup.GET("/:video_id", likeHandler.GetLikeStatus)
-		likeGroup.GET("/account/:account_id", likeHandler.ListLikes)
-	}
-
-	// 评论模块路由
-	commentGroup := r.Group("/api/comments")
-	{
-		commentGroup.POST("", auth.JWTMiddleware(), commentHandler.CreateComment)
-		commentGroup.DELETE("/:comment_id", auth.JWTMiddleware(), commentHandler.DeleteComment)
-	}
-
-	// Feed 模块路由
-	feedGroup := r.Group("/api/feed")
-	{
-		feedGroup.GET("", feedHandler.GetFeed)
-		feedGroup.GET("/hot", feedHandler.GetHotFeed)
-		feedGroup.GET("/following", auth.JWTMiddleware(), feedHandler.GetFollowingFeed)
-		feedGroup.GET("/tag/:tag", feedHandler.GetTagFeed)
-	}
+	// 静态文件服务
+	r.Static("/uploads", "./uploads")
 
 	//启动服务
 	log.Printf("Server is running on port %d", cfg.Server.Port)

@@ -60,22 +60,24 @@ func (lr *LikeRepository) CountByVideoID(ctx context.Context, videoID uint) (int
 }
 
 // 查询用户点赞列表
-func (lr *LikeRepository) FindByAccountID(ctx context.Context, accountID uint, page, limit int) ([]*Like, int64, error) {
+func (lr *LikeRepository) FindByAccountID(ctx context.Context, accountID uint, cursor, limit int) ([]*Like, int64, error) {
 	var likes []*Like
 	var total int64
-
-	offset := (page - 1) * limit
 
 	err := lr.db.WithContext(ctx).Model(&Like{}).Where("account_id = ?", accountID).Count(&total).Error
 	if err != nil {
 		return nil, 0, err
 	}
 
-	err = lr.db.WithContext(ctx).Where("account_id = ?", accountID).
+	query := lr.db.WithContext(ctx).Where("account_id = ?", accountID).
 		Order("created_at DESC").
-		Offset(offset).
-		Limit(limit).
-		Find(&likes).Error
+		Limit(limit)
+
+	if cursor > 0 {
+		query = query.Offset(cursor)
+	}
+
+	err = query.Find(&likes).Error
 	if err != nil {
 		return nil, 0, err
 	}

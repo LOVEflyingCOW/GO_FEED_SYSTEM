@@ -3,12 +3,12 @@ package like
 import (
 	"context"
 	"errors"
-	"log"
 	"strconv"
 	"time"
 
 	"feedsystem_video_go/internal/apierror"
-	rediscache "feedsystem_video_go/internal/middleware/redis"
+	"feedsystem_video_go/internal/middleware/redis"
+	"feedsystem_video_go/internal/pkg/logger"
 	"feedsystem_video_go/internal/video"
 
 	"gorm.io/gorm"
@@ -17,10 +17,10 @@ import (
 type LikeService struct {
 	likeRepository  *LikeRepository
 	videoRepository *video.VideoRepository
-	cache           *rediscache.Client
+	cache           *redis.Client
 }
 
-func NewLikeService(likeRepository *LikeRepository, videoRepository *video.VideoRepository, cache *rediscache.Client) *LikeService {
+func NewLikeService(likeRepository *LikeRepository, videoRepository *video.VideoRepository, cache *redis.Client) *LikeService {
 	return &LikeService{
 		likeRepository:  likeRepository,
 		videoRepository: videoRepository,
@@ -68,7 +68,7 @@ func (ls *LikeService) LikeVideo(ctx context.Context, accountID, videoID uint) (
 
 	// 视频数据库点赞数 +1
 	if err := ls.videoRepository.IncreaseLikeCount(ctx, videoID); err != nil {
-		log.Printf("[WARN] [LikeService] failed to increase like count: %v", err)
+		logger.Warn("LikeService", "failed to increase like count: %v", err)
 	}
 
 	// Redis 缓存点赞数 +1
@@ -97,7 +97,7 @@ func (ls *LikeService) UnlikeVideo(ctx context.Context, accountID, videoID uint)
 	}
 
 	if err := ls.videoRepository.DecreaseLikeCount(ctx, videoID); err != nil {
-		log.Printf("[WARN] [LikeService] failed to decrease like count: %v", err)
+		logger.Warn("LikeService", "failed to decrease like count: %v", err)
 	}
 
 	if ls.cache != nil {
@@ -147,21 +147,54 @@ func (ls *LikeService) GetLikeStatus(ctx context.Context, accountID, videoID uin
 }
 
 // ListLikes 获取用户点赞列表
-func (ls *LikeService) ListLikes(ctx context.Context, accountID uint, page, limit int) (*LikeListResponse, error) {
-	if page < 1 {
-		page = 1
-	}
+func (ls *LikeService) ListLikes(ctx context.Context, accountID uint, cursor, limit int) (*LikeListResponse, error) {
 	if limit < 1 || limit > 100 {
 		limit = 20
 	}
 
-	likes, total, err := ls.likeRepository.FindByAccountID(ctx, accountID, page, limit)
+	likes, total, err := ls.likeRepository.FindByAccountID(ctx, accountID, cursor, limit)
 	if err != nil {
 		return nil, err
 	}
 
+	videoIDs := make([]uint, 0, len(likes))
+	for _, like := range likes {
+		videoIDs = append(videoIDs, like.VideoID)
+	}
+
+	videos, err := ls.videoRepository.FindByIDs(ctx, videoIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	videoMap := make(map[uint]*video.Video)
+	for _, v := range videos {
+		videoMap[v.ID] = v
+	}
+
+	items := make([]*VideoItem, 0, len(likes))
+	for _, like := range likes {
+		if v, ok := videoMap[like.VideoID]; ok {
+			items = append(items, &VideoItem{
+				ID:           v.ID,
+				AccountID:    v.AccountID,
+				Username:     v.Username,
+				Title:        v.Title,
+				PlayURL:      v.PlayURL,
+				CoverURL:     v.CoverURL,
+				Duration:     v.Duration,
+				Description:  v.Description,
+				Tags:         v.Tags,
+				ViewCount:    v.ViewCount,
+				LikeCount:    v.LikeCount,
+				CommentCount: v.CommentCount,
+				CreatedAt:    v.CreatedAt.Format("2006-01-02 15:04:05"),
+			})
+		}
+	}
+
 	return &LikeListResponse{
-		Likes: likes,
-		Total: total,
+		Videos: items,
+		Total:  total,
 	}, nil
 }

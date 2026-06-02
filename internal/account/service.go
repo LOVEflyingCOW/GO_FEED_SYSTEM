@@ -3,13 +3,13 @@ package account
 import (
 	"context"
 	"errors"
-	"feedsystem_video_go/internal/apierror"
-	"feedsystem_video_go/internal/auth"
-	"log"
 	"strconv"
 	"time"
 
-	rediscache "feedsystem_video_go/internal/middleware/redis"
+	"feedsystem_video_go/internal/apierror"
+	"feedsystem_video_go/internal/auth"
+	"feedsystem_video_go/internal/middleware/redis"
+	"feedsystem_video_go/internal/pkg/logger"
 
 	"github.com/go-sql-driver/mysql"
 	"golang.org/x/crypto/bcrypt"
@@ -18,10 +18,10 @@ import (
 
 type AccountService struct {
 	accountRepository *AccountRepository
-	cache             *rediscache.Client
+	cache             *redis.Client
 }
 
-func NewAccountService(accountRepository *AccountRepository, cache *rediscache.Client) *AccountService {
+func NewAccountService(accountRepository *AccountRepository, cache *redis.Client) *AccountService {
 	return &AccountService{accountRepository: accountRepository, cache: cache}
 }
 
@@ -73,7 +73,7 @@ func (as *AccountService) Rename(ctx context.Context, accountID uint, newUsernam
 		cacheCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
 		defer cancel()
 		if err := as.cache.SetBytes(cacheCtx, as.cache.Key("account:%d", accountID), []byte(token), 24*time.Hour); err != nil {
-			log.Printf("[WARN] [AccountService] failed to set cache: %v", err)
+			logger.Warn("AccountService", "failed to set cache: %v", err)
 		}
 	}
 	return token, nil
@@ -107,6 +107,24 @@ func (as *AccountService) ChangePassword(ctx context.Context, username, oldPassw
 	}
 
 	return as.Logout(ctx, acc.ID)
+}
+
+// UpdateProfile 更新用户资料
+func (as *AccountService) UpdateProfile(ctx context.Context, accountID uint, username, bio string) error {
+	updates := make(map[string]interface{})
+
+	if username != "" {
+		updates["username"] = username
+	}
+	if bio != "" {
+		updates["bio"] = bio
+	}
+
+	if len(updates) == 0 {
+		return errors.New("no fields to update")
+	}
+
+	return as.accountRepository.UpdateFields(ctx, accountID, updates)
 }
 
 // FindByID 根据ID查询用户
@@ -148,13 +166,13 @@ func (as *AccountService) Login(ctx context.Context, username, password string) 
 		cacheCtx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
 		defer cancel()
 		if err := as.cache.SetBytes(cacheCtx, as.cache.Key("account:%d", acc.ID), []byte(accessToken), 24*time.Hour); err != nil {
-			log.Printf("[WARN] [AccountService] failed to set cache: %v", err)
+			logger.Warn("AccountService", "failed to set cache: %v", err)
 		}
 		if err := as.cache.SetBytes(cacheCtx, as.cache.Key("account:%d:refresh", acc.ID), []byte(refreshToken), 7*24*time.Hour); err != nil {
-			log.Printf("[WARN] [AccountService] failed to set refresh cache: %v", err)
+			logger.Warn("AccountService", "failed to set refresh cache: %v", err)
 		}
 		if err := as.cache.SetBytes(cacheCtx, as.cache.Key("refresh:%s", refreshToken), []byte(strconv.FormatUint(uint64(acc.ID), 10)), 7*24*time.Hour); err != nil {
-			log.Printf("[WARN] [AccountService] failed to set refresh lookup: %v", err)
+			logger.Warn("AccountService", "failed to set refresh lookup: %v", err)
 		}
 	}
 
@@ -174,6 +192,11 @@ func (as *AccountService) Logout(ctx context.Context, accountID uint) error {
 		_ = as.cache.Del(cacheCtx, as.cache.Key("account:%d:refresh", accountID))
 	}
 	return nil
+}
+
+// SearchUsers 搜索用户
+func (as *AccountService) SearchUsers(ctx context.Context, keyword string, limit int) ([]*Account, error) {
+	return as.accountRepository.SearchByUsername(ctx, keyword, limit)
 }
 
 // Refresh 刷新Token
@@ -219,7 +242,7 @@ func (as *AccountService) Refresh(ctx context.Context, refreshToken string) (str
 	}
 
 	if err := as.cache.SetBytes(cacheCtx, as.cache.Key("account:%d", acc.ID), []byte(newToken), 24*time.Hour); err != nil {
-		log.Printf("[WARN] [AccountService] failed to set cache: %v", err)
+		logger.Warn("AccountService", "failed to set cache: %v", err)
 	}
 
 	return newToken, newRefreshToken, nil

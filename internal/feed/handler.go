@@ -1,11 +1,11 @@
 package feed
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 
 	"feedsystem_video_go/internal/apierror"
+	"feedsystem_video_go/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -27,7 +27,7 @@ func (h *FeedHandler) GetFeed(c *gin.Context) {
 	cursor, _ := strconv.ParseInt(cursorStr, 10, 64)
 	limit, _ := strconv.Atoi(limitStr)
 
-	accountID, _ := getAccountID(c)
+	accountID, _ := middleware.GetAccountID(c)
 
 	req := FeedRequest{
 		AccountID: accountID,
@@ -39,7 +39,7 @@ func (h *FeedHandler) GetFeed(c *gin.Context) {
 
 	resp, err := h.feedService.GetFeed(c.Request.Context(), req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apierror.AbortWithError(c, err)
 		return
 	}
 
@@ -50,7 +50,7 @@ func (h *FeedHandler) GetHotFeed(c *gin.Context) {
 	limitStr := c.DefaultQuery("limit", "20")
 	limit, _ := strconv.Atoi(limitStr)
 
-	accountID, _ := getAccountID(c)
+	accountID, _ := middleware.GetAccountID(c)
 
 	req := FeedRequest{
 		AccountID: accountID,
@@ -60,7 +60,7 @@ func (h *FeedHandler) GetHotFeed(c *gin.Context) {
 
 	resp, err := h.feedService.GetFeed(c.Request.Context(), req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apierror.AbortWithError(c, err)
 		return
 	}
 
@@ -74,9 +74,9 @@ func (h *FeedHandler) GetFollowingFeed(c *gin.Context) {
 	cursor, _ := strconv.ParseInt(cursorStr, 10, 64)
 	limit, _ := strconv.Atoi(limitStr)
 
-	accountID, err := getAccountID(c)
+	accountID, err := middleware.GetAccountID(c)
 	if err != nil {
-		c.JSON(apierror.ClassifyHTTPStatus(err), gin.H{"error": err.Error()})
+		apierror.AbortWithError(c, err)
 		return
 	}
 
@@ -89,7 +89,7 @@ func (h *FeedHandler) GetFollowingFeed(c *gin.Context) {
 
 	resp, err := h.feedService.GetFeed(c.Request.Context(), req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apierror.AbortWithError(c, err)
 		return
 	}
 
@@ -99,7 +99,7 @@ func (h *FeedHandler) GetFollowingFeed(c *gin.Context) {
 func (h *FeedHandler) GetTagFeed(c *gin.Context) {
 	tag := c.Param("tag")
 	if tag == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "tag is required"})
+		apierror.AbortWithError(c, apierror.ErrValidation)
 		return
 	}
 
@@ -109,7 +109,7 @@ func (h *FeedHandler) GetTagFeed(c *gin.Context) {
 	cursor, _ := strconv.ParseInt(cursorStr, 10, 64)
 	limit, _ := strconv.Atoi(limitStr)
 
-	accountID, _ := getAccountID(c)
+	accountID, _ := middleware.GetAccountID(c)
 
 	req := FeedRequest{
 		AccountID: accountID,
@@ -121,17 +121,41 @@ func (h *FeedHandler) GetTagFeed(c *gin.Context) {
 
 	resp, err := h.feedService.GetFeed(c.Request.Context(), req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apierror.AbortWithError(c, err)
 		return
 	}
 
 	c.JSON(http.StatusOK, resp)
 }
 
-func getAccountID(c *gin.Context) (uint, error) {
-	accountID, exists := c.Get("accountID")
-	if !exists {
-		return 0, errors.New("account not authenticated")
+func (h *FeedHandler) SearchFeed(c *gin.Context) {
+	keyword := c.Query("keyword")
+	if keyword == "" {
+		apierror.AbortWithError(c, apierror.ErrValidation)
+		return
 	}
-	return accountID.(uint), nil
+
+	cursorStr := c.DefaultQuery("cursor", "0")
+	limitStr := c.DefaultQuery("limit", "20")
+
+	cursor, _ := strconv.ParseInt(cursorStr, 10, 64)
+	limit, _ := strconv.Atoi(limitStr)
+
+	accountID, _ := middleware.GetAccountID(c)
+
+	req := FeedRequest{
+		AccountID: accountID,
+		Cursor:    cursor,
+		Limit:     limit,
+		Type:      "search",
+		Tag:       keyword,
+	}
+
+	resp, err := h.feedService.GetFeed(c.Request.Context(), req)
+	if err != nil {
+		apierror.AbortWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
 }

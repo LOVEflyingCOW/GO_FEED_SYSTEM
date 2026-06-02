@@ -12,6 +12,7 @@ import (
 	"feedsystem_video_go/internal/account"
 	"feedsystem_video_go/internal/like"
 	"feedsystem_video_go/internal/middleware/redis"
+	"feedsystem_video_go/internal/pkg/logger"
 	"feedsystem_video_go/internal/video"
 )
 
@@ -51,6 +52,8 @@ func (fs *FeedService) GetFeed(ctx context.Context, req FeedRequest) (*FeedRespo
 		return fs.getFollowingFeed(ctx, req)
 	case "tag":
 		return fs.getTagFeed(ctx, req)
+	case "search":
+		return fs.searchFeed(ctx, req)
 	default:
 		return fs.getLatestFeed(ctx, req)
 	}
@@ -213,8 +216,8 @@ func (fs *FeedService) getTagFeed(ctx context.Context, req FeedRequest) (*FeedRe
 
 	videos, err := fs.videoRepo.FindByTag(ctx, req.Tag, req.Limit, int(req.Cursor))
 	if err != nil {
-		log.Printf("[WARN] [FeedService] failed to find by tag: %v", err)
-		return fs.getLatestFeed(ctx, req)
+		logger.Warn("FeedService", "failed to find by tag: %v", err)
+		return nil, err
 	}
 
 	items, err := fs.buildFeedItems(ctx, videos, req.AccountID)
@@ -228,6 +231,29 @@ func (fs *FeedService) getTagFeed(ctx context.Context, req FeedRequest) (*FeedRe
 		if encoded, err := encodeFeedItems(items); err == nil {
 			go fs.cache.Set(cacheCtx, cacheKey, encoded, CacheTTL)
 		}
+	}
+
+	return &FeedResponse{
+		Items:   items,
+		HasMore: len(items) == req.Limit,
+		Next:    req.Cursor + int64(req.Limit),
+	}, nil
+}
+
+func (fs *FeedService) searchFeed(ctx context.Context, req FeedRequest) (*FeedResponse, error) {
+	if req.Tag == "" {
+		return &FeedResponse{Items: []FeedItem{}, HasMore: false, Next: 0}, nil
+	}
+
+	videos, err := fs.videoRepo.Search(ctx, req.Tag, req.Limit, int(req.Cursor))
+	if err != nil {
+		logger.Warn("FeedService", "failed to search videos: %v", err)
+		return nil, err
+	}
+
+	items, err := fs.buildFeedItems(ctx, videos, req.AccountID)
+	if err != nil {
+		return nil, err
 	}
 
 	return &FeedResponse{
@@ -254,7 +280,7 @@ func (fs *FeedService) buildFeedItems(ctx context.Context, videos []*video.Video
 
 	accounts, err := fs.accountRepo.FindByIDs(ctx, accountIDs)
 	if err != nil {
-		log.Printf("[WARN] [FeedService] failed to find accounts: %v", err)
+		logger.Warn("FeedService", "failed to find accounts: %v", err)
 		return []FeedItem{}, nil
 	}
 

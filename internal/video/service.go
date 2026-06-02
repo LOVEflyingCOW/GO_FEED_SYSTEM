@@ -5,6 +5,7 @@ import (
 	"errors"
 	"feedsystem_video_go/internal/account"
 	"feedsystem_video_go/internal/apierror"
+	"feedsystem_video_go/internal/pkg/logger"
 	"fmt"
 	"log"
 	"mime/multipart"
@@ -153,7 +154,7 @@ func (vs *VideoService) ListVideos(ctx context.Context, accountID uint, page, li
 	if len(accountIDs) > 0 {
 		accounts, err := vs.accountRepo.FindByIDs(ctx, accountIDs)
 		if err != nil {
-			log.Printf("[WARN] [VideoService] failed to find accounts: %v", err)
+			logger.Warn("VideoService", "failed to find accounts: %v", err)
 		} else {
 			for _, acc := range accounts {
 				accountMap[acc.ID] = acc
@@ -190,6 +191,11 @@ func (vs *VideoService) ListVideos(ctx context.Context, accountID uint, page, li
 		Videos: videoResponses,
 		Total:  total,
 	}, nil
+}
+
+// ReportView 上报视频播放
+func (vs *VideoService) ReportView(ctx context.Context, videoID uint) error {
+	return vs.videoRepository.IncreaseViewCount(ctx, videoID)
 }
 
 // DeleteVideo 删除视频

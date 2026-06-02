@@ -1,4 +1,4 @@
-package mqlike
+package like
 
 import (
 	"testing"

@@ -102,14 +102,43 @@ func (vr *VideoRepository) FindByAccountIDs(ctx context.Context, accountIDs []ui
 	return videos, err
 }
 
-// FindByTag 按标签查询视频
+// FindByTag 按标签查询视频（精确匹配完整标签）
 func (vr *VideoRepository) FindByTag(ctx context.Context, tag string, limit, offset int) ([]*Video, error) {
 	var videos []*Video
 	err := vr.db.WithContext(ctx).
-		Where("tags LIKE ?", "%"+tag+"%").
+		Where("tags = ? OR tags LIKE ? OR tags LIKE ? OR tags LIKE ?",
+			tag,           // 标签本身
+			tag+",%",      // 标签在开头
+			"%,"+tag+",%", // 标签在中间
+			"%,"+tag).     // 标签在结尾
 		Order("created_at DESC").
 		Offset(offset).
 		Limit(limit).
 		Find(&videos).Error
+	return videos, err
+}
+
+// Search 搜索视频（按标题、描述、标签模糊匹配）
+func (vr *VideoRepository) Search(ctx context.Context, keyword string, limit, offset int) ([]*Video, error) {
+	var videos []*Video
+	err := vr.db.WithContext(ctx).
+		Where("title LIKE ? OR description LIKE ? OR tags LIKE ?",
+			"%"+keyword+"%",
+			"%"+keyword+"%",
+			"%"+keyword+"%").
+		Order("created_at DESC").
+		Offset(offset).
+		Limit(limit).
+		Find(&videos).Error
+	return videos, err
+}
+
+// FindByIDs 批量查询视频
+func (vr *VideoRepository) FindByIDs(ctx context.Context, ids []uint) ([]*Video, error) {
+	var videos []*Video
+	if len(ids) == 0 {
+		return videos, nil
+	}
+	err := vr.db.WithContext(ctx).Where("id IN ?", ids).Find(&videos).Error
 	return videos, err
 }

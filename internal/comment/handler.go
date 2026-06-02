@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"feedsystem_video_go/internal/apierror"
+	"feedsystem_video_go/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,11 +21,18 @@ func NewCommentHandler(commentService *CommentService) *CommentHandler {
 }
 
 // CreateComment 创建评论
-// POST /api/comments
+// POST /api/comment/:video_id
 func (h *CommentHandler) CreateComment(c *gin.Context) {
-	accountID, err := getAccountID(c)
+	accountID, err := middleware.GetAccountID(c)
 	if err != nil {
 		apierror.AbortWithError(c, err)
+		return
+	}
+
+	videoIDStr := c.Param("video_id")
+	videoID, err := strconv.ParseUint(videoIDStr, 10, 64)
+	if err != nil {
+		apierror.AbortWithError(c, apierror.ErrInvalidID)
 		return
 	}
 
@@ -34,7 +42,7 @@ func (h *CommentHandler) CreateComment(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.commentService.CreateComment(c.Request.Context(), accountID, req.VideoID, req.Content, req.ReplyTo)
+	resp, err := h.commentService.CreateComment(c.Request.Context(), accountID, uint(videoID), req.Content, req.ReplyTo)
 	if err != nil {
 		apierror.AbortWithError(c, err)
 		return
@@ -46,7 +54,7 @@ func (h *CommentHandler) CreateComment(c *gin.Context) {
 // DeleteComment 删除评论
 // DELETE /api/comments/:comment_id
 func (h *CommentHandler) DeleteComment(c *gin.Context) {
-	accountID, err := getAccountID(c)
+	accountID, err := middleware.GetAccountID(c)
 	if err != nil {
 		apierror.AbortWithError(c, err)
 		return
@@ -91,17 +99,4 @@ func (h *CommentHandler) ListComments(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, resp)
-}
-
-// getAccountID 从上下文获取用户ID
-func getAccountID(c *gin.Context) (uint, error) {
-	accountID, exists := c.Get("accountID")
-	if !exists {
-		return 0, apierror.ErrUnauthorized
-	}
-	id, ok := accountID.(uint)
-	if !ok {
-		return 0, apierror.ErrValidation
-	}
-	return id, nil
 }

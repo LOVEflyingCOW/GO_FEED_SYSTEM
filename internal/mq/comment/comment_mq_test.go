@@ -1,4 +1,4 @@
-package mqcomment
+package comment
 
 import (
 	"testing"

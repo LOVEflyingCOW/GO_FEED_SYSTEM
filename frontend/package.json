@@ -1,0 +1,24 @@
+{
+  "name": "douyin-clone",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "lucide-vue-next": "^0.294.0",
+    "pinia": "^2.1.7",
+    "vue": "^3.3.13",
+    "vue-router": "^4.2.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@vitejs/plugin-vue": "^4.5.1",
+    "typescript": "^5.3.2",
+    "vite": "^5.0.8",
+    "vue-tsc": "^3.3.2"
+  }
+}

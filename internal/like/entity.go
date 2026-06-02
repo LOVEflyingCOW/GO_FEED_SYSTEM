@@ -26,6 +26,22 @@ type LikeListRequest struct {
 }
 
 type LikeListResponse struct {
-	Likes []*Like `json:"likes"`
-	Total int64   `json:"total"`
+	Videos []*VideoItem `json:"videos"`
+	Total  int64        `json:"total"`
+}
+
+type VideoItem struct {
+	ID           uint   `json:"id"`
+	AccountID    uint   `json:"account_id"`
+	Username     string `json:"username"`
+	Title        string `json:"title"`
+	PlayURL      string `json:"play_url"`
+	CoverURL     string `json:"cover_url"`
+	Duration     int    `json:"duration"`
+	Description  string `json:"description"`
+	Tags         string `json:"tags"`
+	ViewCount    int64  `json:"view_count"`
+	LikeCount    int64  `json:"like_count"`
+	CommentCount int64  `json:"comment_count"`
+	CreatedAt    string `json:"created_at"`
 }
