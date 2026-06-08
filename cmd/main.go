@@ -16,6 +16,7 @@ import (
 	mqpopularity "feedsystem_video_go/internal/mq/popularity"
 	"feedsystem_video_go/internal/mq/rabbitmq"
 	"feedsystem_video_go/internal/router"
+	"feedsystem_video_go/internal/search"
 	"feedsystem_video_go/internal/social"
 	"feedsystem_video_go/internal/sse"
 	"feedsystem_video_go/internal/video"
@@ -85,6 +86,9 @@ func main() {
 	accountHandler := account.NewAccountHandler(accountService)
 	log.Printf("Account module initialized")
 
+	//初始化社交模块（关注功能）
+	socialRepo := social.NewSocialRepository(sqlDB)
+
 	//初始化视频模块
 	videoRepo := video.NewVideoRepository(sqlDB)
 	uploadService := video.NewUploadService(videoRepo, cfg.Storage.UploadDir, cfg.Storage.BaseURL)
@@ -112,7 +116,6 @@ func main() {
 	log.Printf("Like module initialized")
 
 	//初始化社交模块（关注功能）
-	socialRepo := social.NewSocialRepository(sqlDB)
 	socialService := social.NewSocialService(socialRepo, accountRepo)
 	socialHandler := social.NewSocialHandler(socialService)
 	log.Printf("Social module initialized")
@@ -127,6 +130,12 @@ func main() {
 	messageService := message.NewMessageService(messageRepo, accountRepo, sseHub)
 	messageHandler := message.NewMessageHandler(messageService)
 	log.Printf("Message module initialized")
+
+	//初始化搜索模块
+	searchRepo := search.NewSearchRepository(sqlDB)
+	searchService := search.NewSearchService(searchRepo)
+	searchHandler := search.NewSearchHandler(searchService)
+	log.Printf("Search module initialized")
 
 	//初始化MQ模块
 	var likeMQ *mqlike.LikeMQ
@@ -174,7 +183,7 @@ func main() {
 	r := gin.Default()
 
 	// 注册路由（使用router模块）
-	router := router.NewRouter(
+	rtr := router.NewRouter(
 		accountHandler,
 		videoHandler,
 		likeHandler,
@@ -182,9 +191,10 @@ func main() {
 		feedHandler,
 		socialHandler,
 		messageHandler,
+		searchHandler,
 		sseHub,
 	)
-	router.RegisterRoutes(r)
+	rtr.RegisterRoutes(r)
 
 	// 静态文件服务
 	r.Static("/uploads", "./uploads")

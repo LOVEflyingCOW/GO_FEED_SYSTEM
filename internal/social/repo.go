@@ -99,3 +99,17 @@ func (sr *SocialRepository) CountFollowing(ctx context.Context, accountID uint) 
 	err := sr.db.WithContext(ctx).Model(&Follow{}).Where("account_id = ?", accountID).Count(&count).Error
 	return count, err
 }
+
+func (sr *SocialRepository) GetFollowingIDs(ctx context.Context, accountID uint) ([]uint, error) {
+	var follows []*Follow
+	err := sr.db.WithContext(ctx).Where("account_id = ?", accountID).Find(&follows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]uint, 0, len(follows))
+	for _, f := range follows {
+		ids = append(ids, f.TargetID)
+	}
+	return ids, nil
+}

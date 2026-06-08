@@ -1,27 +1,67 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { feedAPI, accountAPI } from '@/api';
+import { feedAPI, accountAPI, searchAPI } from '@/api';
+import { useUserStore } from '@/stores/user';
 import { Search, X, TrendingUp, User, Video } from 'lucide-vue-next';
 
 const router = useRouter();
+const userStore = useUserStore();
 const searchQuery = ref('');
-const searchHistory = ref(['美食', '旅行', '搞笑', '音乐']);
-const trendingTags = [
-  { tag: '热门挑战', count: '12.5w' },
-  { tag: '每日一笑', count: '8.2w' },
-  { tag: '美食探店', count: '6.8w' },
-  { tag: '旅行日记', count: '5.3w' },
-];
+const searchHistory = ref<string[]>([]);
+const trendingTags = ref<{ keyword: string; count: string }[]>([]);
 const searchResults = ref<any[]>([]);
 const usersResults = ref<any[]>([]);
 const isSearching = ref(false);
 const activeTab = ref<'video' | 'user'>('video');
 
+const loadHotSearches = async () => {
+  try {
+    const response = await searchAPI.getHotSearches();
+    trendingTags.value = response.hot_searches.map(item => ({
+      keyword: item.keyword,
+      count: item.count >= 10000 ? (item.count / 10000).toFixed(1) + 'w' : item.count.toString()
+    }));
+  } catch (err) {
+    console.error('Failed to load hot searches:', err);
+    // 如果获取失败，使用默认数据
+    trendingTags.value = [
+      { tag: '热门挑战', count: '12.5w' },
+      { tag: '每日一笑', count: '8.2w' },
+      { tag: '美食探店', count: '6.8w' },
+      { tag: '旅行日记', count: '5.3w' },
+    ].map(item => ({ keyword: item.tag, count: item.count }));
+  }
+};
+
+const loadSearchHistory = async () => {
+  if (!userStore.isLoggedIn()) {
+    searchHistory.value = [];
+    return;
+  }
+  try {
+    const response = await searchAPI.getSearchHistory();
+    searchHistory.value = response.history || [];
+  } catch (err) {
+    console.error('Failed to load search history:', err);
+    searchHistory.value = [];
+  }
+};
+
 const handleSearch = async () => {
   if (!searchQuery.value.trim()) return;
   
   isSearching.value = true;
+  
+  // 记录搜索历史（登录用户）
+  if (userStore.isLoggedIn()) {
+    try {
+      await searchAPI.recordSearch(searchQuery.value.trim());
+    } catch (err) {
+      console.error('Failed to record search:', err);
+    }
+  }
+  
   try {
     const [videoRes, userRes] = await Promise.all([
       feedAPI.search(searchQuery.value),
@@ -53,12 +93,27 @@ const selectTag = (tag: string) => {
   handleSearch();
 };
 
+const clearAllHistory = async () => {
+  if (!userStore.isLoggedIn()) return;
+  try {
+    await searchAPI.clearSearchHistory();
+    searchHistory.value = [];
+  } catch (err) {
+    console.error('Failed to clear search history:', err);
+  }
+};
+
 const formatNumber = (num: number) => {
   if (num >= 10000) {
     return (num / 10000).toFixed(1) + 'w';
   }
   return num.toString();
 };
+
+onMounted(() => {
+  loadHotSearches();
+  loadSearchHistory();
+});
 </script>
 
 <template>
@@ -92,21 +147,21 @@ const formatNumber = (num: number) => {
           <div class="trending-list">
             <div 
               v-for="(item, index) in trendingTags" 
-              :key="item.tag"
+              :key="item.keyword"
               class="trending-item"
-              @click="selectTag(item.tag)"
+              @click="selectTag(item.keyword)"
             >
               <span class="trending-rank">{{ index + 1 }}</span>
-              <span class="trending-tag">{{ item.tag }}</span>
+              <span class="trending-tag">{{ item.keyword }}</span>
               <span class="trending-count">{{ item.count }}</span>
             </div>
           </div>
         </div>
 
-        <div class="history-section">
+        <div v-if="searchHistory.length > 0" class="history-section">
           <div class="section-header">
             <h3>搜索历史</h3>
-            <button class="clear-history">清空</button>
+            <button class="clear-history" @click="clearAllHistory">清空</button>
           </div>
           <div class="history-tags">
             <span 

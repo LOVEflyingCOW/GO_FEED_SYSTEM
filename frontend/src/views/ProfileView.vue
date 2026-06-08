@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user';
 import { socialAPI, videoAPI, likeAPI } from '@/api';
 import type { Profile, Video } from '@/types';
-import { ArrowLeft, Settings, Heart, MessageCircle, Grid, Play, LogOut, Edit3 } from 'lucide-vue-next';
+import { ArrowLeft, Settings, Heart, MessageCircle, Grid, Play, LogOut, Edit3, X, UserPlus } from 'lucide-vue-next';
 
 const route = useRoute();
 const router = useRouter();
@@ -16,6 +16,14 @@ const error = ref<string | null>(null);
 const activeTab = ref<'works' | 'likes'>('works');
 const videos = ref<Video[]>([]);
 const likedVideos = ref<Video[]>([]);
+
+// 粉丝/关注列表弹窗
+const showFollowModal = ref(false);
+const followModalType = ref<'followers' | 'following'>('followers');
+const followList = ref<{ id: number; username: string; avatar_url?: string }[]>([]);
+const followListTotal = ref(0);
+const followListPage = ref(1);
+const isFollowListLoading = ref(false);
 
 const isCurrentUser = computed(() => {
   if (!profile.value) return false;
@@ -92,9 +100,11 @@ const handleFollow = async () => {
     if (profile.value.is_followed) {
       await socialAPI.unfollow(profile.value.account_id);
       profile.value.is_followed = false;
+      if (profile.value.follower_count) profile.value.follower_count--;
     } else {
       await socialAPI.follow(profile.value.account_id);
       profile.value.is_followed = true;
+      profile.value.follower_count++;
     }
   } catch (err) {
     console.error('Follow error:', err);
@@ -112,6 +122,58 @@ const handleMessage = () => {
     return;
   }
   router.push({ path: '/message', query: { user_id: profile.value.account_id } });
+};
+
+// 粉丝/关注列表相关
+const openFollowModal = async (type: 'followers' | 'following') => {
+  followModalType.value = type;
+  followListPage.value = 1;
+  followList.value = [];
+  showFollowModal.value = true;
+  await loadFollowList();
+};
+
+const loadFollowList = async () => {
+  if (!profile.value) return;
+  
+  isFollowListLoading.value = true;
+  try {
+    const accountId = profile.value.account_id;
+    let response: any;
+    
+    if (followModalType.value === 'followers') {
+      response = await socialAPI.getFollowers(accountId, followListPage.value, 20);
+    } else {
+      response = await socialAPI.getFollowing(accountId, followListPage.value, 20);
+    }
+    
+    if (followListPage.value === 1) {
+      followList.value = response[followModalType.value] || [];
+    } else {
+      followList.value = [...followList.value, ...(response[followModalType.value] || [])];
+    }
+    followListTotal.value = response.total || 0;
+    followListPage.value++;
+  } catch (err) {
+    console.error('Failed to load follow list:', err);
+  } finally {
+    isFollowListLoading.value = false;
+  }
+};
+
+const closeFollowModal = () => {
+  showFollowModal.value = false;
+  followList.value = [];
+  followListPage.value = 1;
+};
+
+const goToProfile = (userId: number) => {
+  closeFollowModal();
+  if (userId === userStore.accountId) {
+    router.push('/profile/' + userId);
+  } else {
+    router.push('/profile/' + userId);
+  }
 };
 
 onMounted(() => {
@@ -157,11 +219,11 @@ onMounted(() => {
               <span class="stat-value">{{ videos.length }}</span>
               <span class="stat-label">作品</span>
             </div>
-            <div class="stat-item">
+            <div class="stat-item clickable" @click="openFollowModal('followers')">
               <span class="stat-value">{{ formatNumber(profile.follower_count) }}</span>
               <span class="stat-label">粉丝</span>
             </div>
-            <div class="stat-item">
+            <div class="stat-item clickable" @click="openFollowModal('following')">
               <span class="stat-value">{{ formatNumber(profile.following_count) }}</span>
               <span class="stat-label">关注</span>
             </div>
@@ -279,6 +341,47 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- 粉丝/关注列表弹窗 -->
+    <div v-if="showFollowModal" class="modal-overlay" @click="closeFollowModal">
+      <div class="modal-content" @click.stop>
+        <div class="modal-header">
+          <h3>{{ followModalType === 'followers' ? '粉丝' : '关注' }}</h3>
+          <button class="close-btn" @click="closeFollowModal">
+            <X :size="20" />
+          </button>
+        </div>
+        
+        <div class="modal-body">
+          <div v-if="isFollowListLoading" class="loading-state small">
+            <div class="spinner"></div>
+          </div>
+          
+          <div v-else-if="followList.length === 0" class="empty-state">
+            <UserPlus :size="48" />
+            <p>{{ followModalType === 'followers' ? '暂无粉丝' : '暂无关注' }}</p>
+          </div>
+          
+          <div v-else class="follow-list">
+            <div 
+              v-for="user in followList" 
+              :key="user.id"
+              class="follow-item"
+              @click="goToProfile(user.id)"
+            >
+              <div class="follow-avatar">{{ user.username?.charAt(0) || '?' }}</div>
+              <div class="follow-info">
+                <span class="follow-name">{{ user.username }}</span>
+              </div>
+            </div>
+          </div>
+          
+          <div v-if="!isFollowListLoading && followList.length < followListTotal" class="load-more">
+            <button class="load-more-btn" @click="loadFollowList">加载更多</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -322,6 +425,10 @@ onMounted(() => {
   height: 100vh;
 }
 
+.loading-state.small {
+  height: 200px;
+}
+
 .spinner {
   width: 48px;
   height: 48px;
@@ -329,6 +436,11 @@ onMounted(() => {
   border-top-color: #ff2d55;
   border-radius: 50%;
   animation: spin 1s linear infinite;
+}
+
+.loading-state.small .spinner {
+  width: 32px;
+  height: 32px;
 }
 
 @keyframes spin {
@@ -409,6 +521,15 @@ onMounted(() => {
 
 .stat-item {
   text-align: center;
+}
+
+.stat-item.clickable {
+  cursor: pointer;
+}
+
+.stat-item.clickable:hover .stat-value,
+.stat-item.clickable:hover .stat-label {
+  color: #ff2d55;
 }
 
 .stat-value {
@@ -564,5 +685,105 @@ onMounted(() => {
 .empty-state p {
   margin-top: 16px;
   font-size: 16px;
+}
+
+/* 弹窗样式 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: flex-end;
+  z-index: 1000;
+}
+
+.modal-content {
+  width: 100%;
+  max-height: 70vh;
+  background: #1a1a1a;
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  padding: 8px;
+}
+
+.modal-body {
+  max-height: calc(70vh - 60px);
+  overflow-y: auto;
+}
+
+.follow-list {
+  padding: 8px;
+}
+
+.follow-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.follow-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.follow-avatar {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #ff0050, #ff2d55);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.follow-info {
+  flex: 1;
+}
+
+.follow-name {
+  font-size: 16px;
+}
+
+.load-more {
+  padding: 16px;
+  text-align: center;
+}
+
+.load-more-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  padding: 12px 24px;
+  font-size: 14px;
+  cursor: pointer;
 }
 </style>

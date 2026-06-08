@@ -135,3 +135,18 @@ func (ar *AccountRepository) SearchByUsername(ctx context.Context, keyword strin
 	}
 	return accounts, nil
 }
+
+// SearchByIDs 在指定ID列表中搜索用户（用于@提及提示）
+func (ar *AccountRepository) SearchByIDs(ctx context.Context, ids []uint, keyword string, limit int) ([]*Account, error) {
+	var accounts []*Account
+	query := ar.db.WithContext(ctx).Where("id IN ?", ids)
+
+	if keyword != "" {
+		query = query.Where("username LIKE ?", "%"+keyword+"%")
+	}
+
+	if err := query.Limit(limit).Find(&accounts).Error; err != nil {
+		return nil, err
+	}
+	return accounts, nil
+}

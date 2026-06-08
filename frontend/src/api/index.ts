@@ -45,6 +45,7 @@ export const accountAPI = {
   searchUsers(keyword: string, limit?: number): Promise<{ id: number; username: string; avatar_url?: string }[]> {
     return api.get('/account/search', { params: { keyword, limit } })
   },
+  
   rename(newUsername: string) {
     return api.put('/account/rename', { new_username: newUsername })
   },
@@ -138,6 +139,9 @@ export const socialAPI = {
   },
   getFollowing(accountId: number, page?: number, limit?: number) {
     return api.get(`/social/following/${accountId}`, { params: { page, limit } })
+  },
+  searchFriends(keyword: string, limit?: number): Promise<{ id: number; username: string; avatar_url?: string }[]> {
+    return api.get('/social/friends/search', { params: { keyword, limit } })
   }
 }
 
@@ -150,5 +154,20 @@ export const messageAPI = {
   },
   getMessages(otherId: number, page?: number, limit?: number): Promise<{ messages: Message[]; total: number }> {
     return api.get(`/message/${otherId}`, { params: { page, limit } })
+  }
+}
+
+export const searchAPI = {
+  recordSearch(keyword: string) {
+    return api.post('/search/record', { keyword })
+  },
+  getSearchHistory(): Promise<{ history: string[] }> {
+    return api.get('/search/history')
+  },
+  clearSearchHistory() {
+    return api.delete('/search/history')
+  },
+  getHotSearches(): Promise<{ hot_searches: { keyword: string; count: number }[] }> {
+    return api.get('/search/hot')
   }
 }

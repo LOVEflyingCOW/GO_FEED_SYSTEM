@@ -154,3 +154,16 @@ func (ss *SocialService) GetProfile(ctx context.Context, accountID, requestAccou
 		IsFollowed:     isFollowed,
 	}, nil
 }
+
+func (ss *SocialService) SearchFriends(ctx context.Context, accountID uint, keyword string, limit int) ([]*account.Account, error) {
+	followingIDs, err := ss.socialRepository.GetFollowingIDs(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(followingIDs) == 0 {
+		return []*account.Account{}, nil
+	}
+
+	return ss.accountRepository.SearchByIDs(ctx, followingIDs, keyword, limit)
+}

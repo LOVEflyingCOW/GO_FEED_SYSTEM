@@ -22,7 +22,10 @@ type AccountService struct {
 }
 
 func NewAccountService(accountRepository *AccountRepository, cache *redis.Client) *AccountService {
-	return &AccountService{accountRepository: accountRepository, cache: cache}
+	return &AccountService{
+		accountRepository: accountRepository,
+		cache:             cache,
+	}
 }
 
 // CreateAccount 创建账户

@@ -7,6 +7,7 @@ import (
 	"feedsystem_video_go/internal/like"
 	"feedsystem_video_go/internal/message"
 	"feedsystem_video_go/internal/middleware"
+	"feedsystem_video_go/internal/search"
 	"feedsystem_video_go/internal/social"
 	"feedsystem_video_go/internal/sse"
 	"feedsystem_video_go/internal/video"
@@ -22,6 +23,7 @@ type Router struct {
 	feedHandler    *feed.FeedHandler
 	socialHandler  *social.SocialHandler
 	messageHandler *message.MessageHandler
+	searchHandler  *search.SearchHandler
 	sseHub         *sse.Hub
 }
 
@@ -33,6 +35,7 @@ func NewRouter(
 	feedHandler *feed.FeedHandler,
 	socialHandler *social.SocialHandler,
 	messageHandler *message.MessageHandler,
+	searchHandler *search.SearchHandler,
 	sseHub *sse.Hub,
 ) *Router {
 	return &Router{
@@ -43,6 +46,7 @@ func NewRouter(
 		feedHandler:    feedHandler,
 		socialHandler:  socialHandler,
 		messageHandler: messageHandler,
+		searchHandler:  searchHandler,
 		sseHub:         sseHub,
 	}
 }
@@ -129,6 +133,7 @@ func (r *Router) RegisterRoutes(engine *gin.Engine) {
 		{
 			social.POST("/follow/:target_id", r.socialHandler.Follow)
 			social.DELETE("/unfollow/:target_id", r.socialHandler.Unfollow)
+			social.GET("/friends/search", r.socialHandler.SearchFriends)
 		}
 	}
 
@@ -138,6 +143,18 @@ func (r *Router) RegisterRoutes(engine *gin.Engine) {
 		message.POST("/send", r.messageHandler.SendMessage)
 		message.GET("/conversations", r.messageHandler.GetConversations)
 		message.GET("/:other_id", r.messageHandler.GetMessages)
+	}
+
+	search := api.Group("/search")
+	{
+		search.GET("/hot", r.searchHandler.GetHotSearches)
+
+		search.Use(middleware.RequireAuth())
+		{
+			search.POST("/record", r.searchHandler.RecordSearch)
+			search.GET("/history", r.searchHandler.GetSearchHistory)
+			search.DELETE("/history", r.searchHandler.ClearSearchHistory)
+		}
 	}
 
 	api.GET("/sse", r.sseHub.ServeSSE)

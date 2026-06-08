@@ -134,3 +134,41 @@ func (h *SocialHandler) GetProfile(c *gin.Context) {
 
 	c.JSON(http.StatusOK, profile)
 }
+
+func (h *SocialHandler) SearchFriends(c *gin.Context) {
+	accountID, err := middleware.GetAccountID(c)
+	if err != nil {
+		apierror.AbortWithError(c, err)
+		return
+	}
+
+	keyword := c.Query("keyword")
+	limitStr := c.DefaultQuery("limit", "10")
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		limit = 10
+	}
+
+	accounts, err := h.socialService.SearchFriends(c.Request.Context(), accountID, keyword, limit)
+	if err != nil {
+		apierror.AbortWithError(c, err)
+		return
+	}
+
+	type FriendItem struct {
+		ID        uint   `json:"id"`
+		Username  string `json:"username"`
+		AvatarURL string `json:"avatar_url"`
+	}
+
+	result := make([]FriendItem, 0, len(accounts))
+	for _, acc := range accounts {
+		result = append(result, FriendItem{
+			ID:        acc.ID,
+			Username:  acc.Username,
+			AvatarURL: acc.AvatarURL,
+		})
+	}
+
+	c.JSON(http.StatusOK, result)
+}
