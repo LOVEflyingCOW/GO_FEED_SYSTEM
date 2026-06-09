@@ -13,6 +13,7 @@ const profile = ref<Profile | null>(null);
 const username = ref('');
 const bio = ref('');
 const avatarFile = ref<File | null>(null);
+const avatarPreview = ref('');
 const isLoading = ref(false);
 const isSubmitting = ref(false);
 
@@ -33,6 +34,12 @@ const handleAvatarChange = (event: Event) => {
   const target = event.target as HTMLInputElement;
   if (target.files && target.files.length > 0) {
     avatarFile.value = target.files[0];
+    // 添加即时预览
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      avatarPreview.value = e.target?.result as string;
+    };
+    reader.readAsDataURL(target.files[0]);
   }
 };
 
@@ -44,6 +51,23 @@ const handleSubmit = async () => {
 
   isSubmitting.value = true;
   try {
+    if (avatarFile.value) {
+      const formData = new FormData();
+      formData.append('avatar', avatarFile.value);
+      
+      console.log('准备上传头像，文件名:', avatarFile.value.name);
+      console.log('文件大小:', avatarFile.value.size, 'bytes');
+      console.log('文件类型:', avatarFile.value.type);
+      
+      const uploadPromise = accountAPI.uploadAvatar(formData);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('上传超时')), 30000)
+      );
+      
+      const result = await Promise.race([uploadPromise, timeoutPromise]);
+      console.log('头像上传成功:', result);
+    }
+
     const hasUsernameChanged = username.value !== profile.value?.username;
     const hasBioChanged = bio.value !== profile.value?.bio;
 
@@ -55,17 +79,15 @@ const handleSubmit = async () => {
       }
     }
 
-    if (avatarFile.value) {
-      const formData = new FormData();
-      formData.append('avatar', avatarFile.value);
-      await accountAPI.uploadAvatar(formData);
-    }
-
     alert('资料修改成功');
     router.back();
-  } catch (err) {
-    console.error('Failed to update profile:', err);
-    alert('修改失败');
+  } catch (err: any) {
+    console.error('头像上传失败:', err);
+    console.error('错误响应:', err.response);
+    console.error('错误状态:', err.response?.status);
+    console.error('错误数据:', err.response?.data);
+    const errorMsg = err.response?.data?.message || err.message || '修改失败';
+    alert(errorMsg);
   } finally {
     isSubmitting.value = false;
   }
@@ -102,8 +124,8 @@ onMounted(() => {
           <label class="avatar-upload-label">
             <div class="avatar-preview">
               <img 
-                v-if="profile?.avatar_url" 
-                :src="profile.avatar_url" 
+                v-if="avatarPreview || profile?.avatar_url" 
+                :src="avatarPreview || profile?.avatar_url" 
                 class="avatar"
               />
               <div v-else class="avatar-placeholder">

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user';
 import { socialAPI, videoAPI, likeAPI } from '@/api';
 import type { Profile, Video } from '@/types';
-import { ArrowLeft, Settings, Heart, MessageCircle, Grid, Play, LogOut, Edit3, X, UserPlus } from 'lucide-vue-next';
+import { ArrowLeft, Heart, MessageCircle, Grid, Play, LogOut, Edit3, X, UserPlus } from 'lucide-vue-next';
 
 const route = useRoute();
 const router = useRouter();
@@ -169,14 +169,14 @@ const closeFollowModal = () => {
 
 const goToProfile = (userId: number) => {
   closeFollowModal();
-  if (userId === userStore.accountId) {
-    router.push('/profile/' + userId);
-  } else {
-    router.push('/profile/' + userId);
-  }
+  router.push('/profile/' + userId);
 };
 
 onMounted(() => {
+  loadProfile();
+});
+
+watch(() => route.params.id, () => {
   loadProfile();
 });
 </script>
@@ -188,9 +188,6 @@ onMounted(() => {
         <ArrowLeft :size="24" />
       </button>
       <h1 class="profile-title">个人主页</h1>
-      <button class="settings-btn">
-        <Settings :size="24" />
-      </button>
     </header>
 
     <div v-if="isLoading" class="loading-state">
@@ -369,7 +366,15 @@ onMounted(() => {
               class="follow-item"
               @click="goToProfile(user.id)"
             >
-              <div class="follow-avatar">{{ user.username?.charAt(0) || '?' }}</div>
+              <div class="follow-avatar-container">
+                <img 
+                  v-if="user.avatar_url" 
+                  :src="user.avatar_url" 
+                  class="follow-avatar-img" 
+                  :alt="user.username"
+                />
+                <div v-else class="follow-avatar-placeholder">{{ user.username?.charAt(0) || '?' }}</div>
+              </div>
               <div class="follow-info">
                 <span class="follow-name">{{ user.username }}</span>
               </div>
@@ -752,11 +757,24 @@ onMounted(() => {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.follow-avatar {
+.follow-avatar-container {
   width: 48px;
   height: 48px;
-  background: linear-gradient(135deg, #ff0050, #ff2d55);
   border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid #ff2d55;
+}
+
+.follow-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.follow-avatar-placeholder {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #ff0050, #ff2d55);
   display: flex;
   align-items: center;
   justify-content: center;

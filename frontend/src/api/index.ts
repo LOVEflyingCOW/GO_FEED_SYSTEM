@@ -53,9 +53,7 @@ export const accountAPI = {
     return api.put('/account/profile', { username, bio })
   },
   uploadAvatar(formData: FormData) {
-    return api.post('/account/avatar', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
+    return api.post('/account/avatar', formData)
   }
 }
 

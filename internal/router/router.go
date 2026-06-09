@@ -70,6 +70,7 @@ func (r *Router) RegisterRoutes(engine *gin.Engine) {
 			account.PUT("/password", r.accountHandler.ChangePassword)
 			account.PUT("/profile", r.accountHandler.UpdateProfile)
 			account.POST("/logout", r.accountHandler.Logout)
+			account.POST("/avatar", r.accountHandler.UploadAvatar)
 		}
 	}
 

@@ -145,7 +145,7 @@ func (fs *FeedService) getHotFeed(ctx context.Context, req FeedRequest) (*FeedRe
 
 func (fs *FeedService) getFollowingFeed(ctx context.Context, req FeedRequest) (*FeedResponse, error) {
 	if req.AccountID == 0 {
-		return fs.getLatestFeed(ctx, req)
+		return &FeedResponse{Items: []FeedItem{}, HasMore: false, Next: 0}, nil
 	}
 
 	cacheKey := fs.cache.Key("feed:following:%d:%d", req.AccountID, req.Cursor)
@@ -164,7 +164,7 @@ func (fs *FeedService) getFollowingFeed(ctx context.Context, req FeedRequest) (*
 	followingIDs, err := fs.accountRepo.GetFollowing(ctx, req.AccountID)
 	if err != nil {
 		log.Printf("[WARN] [FeedService] failed to get following: %v", err)
-		return fs.getLatestFeed(ctx, req)
+		return &FeedResponse{Items: []FeedItem{}, HasMore: false, Next: 0}, nil
 	}
 
 	if len(followingIDs) == 0 {

@@ -55,12 +55,13 @@ func (mr *MessageRepository) GetConversations(ctx context.Context, accountID uin
 				(from_id = ? AND to_id = CASE WHEN from_id = ? THEN to_id ELSE from_id END) OR
 				(from_id = CASE WHEN from_id = ? THEN to_id ELSE from_id END AND to_id = ?)
 				ORDER BY created_at DESC LIMIT 1) as last_message,
-			SUM(CASE WHEN to_id = ? AND is_read = false THEN 1 ELSE 0 END) as unread_count
-		FROM messages
+			COALESCE((SELECT COUNT(*) FROM messages m2 
+				WHERE m2.to_id = ? AND m2.from_id = CASE WHEN m.from_id = ? THEN m.to_id ELSE m.from_id END AND m2.is_read = false), 0) as unread_count
+		FROM messages m
 		WHERE from_id = ? OR to_id = ?
 		GROUP BY user_id
 		ORDER BY updated_at DESC
-	`, accountID, accountID, accountID, accountID, accountID, accountID, accountID, accountID).Rows()
+	`, accountID, accountID, accountID, accountID, accountID, accountID, accountID, accountID, accountID).Rows()
 	if err != nil {
 		return nil, err
 	}

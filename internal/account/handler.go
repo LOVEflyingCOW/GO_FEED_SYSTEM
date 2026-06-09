@@ -214,3 +214,26 @@ func (h *AccountHandler) Refresh(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, LoginResponse{Token: token, RefreshToken: refreshToken})
 }
+
+// UploadAvatar 上传头像
+func (h *AccountHandler) UploadAvatar(c *gin.Context) {
+	accountID, err := middleware.GetAccountID(c)
+	if err != nil {
+		apierror.AbortWithError(c, err)
+		return
+	}
+
+	file, err := c.FormFile("avatar")
+	if err != nil {
+		apierror.AbortWithError(c, apierror.ErrValidation)
+		return
+	}
+
+	avatarURL, err := h.accountService.UploadAvatar(c.Request.Context(), accountID, file)
+	if err != nil {
+		apierror.AbortWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"avatar_url": avatarURL})
+}

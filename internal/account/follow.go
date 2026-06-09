@@ -11,14 +11,14 @@ import (
 // Follow 关注关系实体
 type Follow struct {
 	ID          uint `gorm:"primaryKey" json:"id"`
-	FollowerID  uint `gorm:"index" json:"follower_id"`  // 关注者ID
-	FollowingID uint `gorm:"index" json:"following_id"` // 被关注者ID
+	FollowerID  uint `gorm:"column:account_id" json:"account_id"` // 关注者ID（映射到数据库的 account_id 字段）
+	FollowingID uint `gorm:"column:target_id" json:"target_id"`   // 被关注者ID（映射到数据库的 target_id 字段）
 }
 
 // GetFollowing 获取用户关注的所有用户ID
 func (ar *AccountRepository) GetFollowing(ctx context.Context, accountID uint) ([]uint, error) {
 	var follows []Follow
-	err := ar.db.WithContext(ctx).Where("follower_id = ?", accountID).Find(&follows).Error
+	err := ar.db.WithContext(ctx).Where("account_id = ?", accountID).Find(&follows).Error
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func (ar *AccountRepository) FollowAccount(ctx context.Context, followerID, foll
 
 // UnfollowAccount 取消关注
 func (ar *AccountRepository) UnfollowAccount(ctx context.Context, followerID, followingID uint) error {
-	result := ar.db.WithContext(ctx).Where("follower_id = ? AND following_id = ?", followerID, followingID).Delete(&Follow{})
+	result := ar.db.WithContext(ctx).Where("account_id = ? AND target_id = ?", followerID, followingID).Delete(&Follow{})
 	if result.Error != nil {
 		return result.Error
 	}
@@ -60,13 +60,13 @@ func (ar *AccountRepository) UnfollowAccount(ctx context.Context, followerID, fo
 // GetFollowerCount 获取粉丝数
 func (ar *AccountRepository) GetFollowerCount(ctx context.Context, accountID uint) (int64, error) {
 	var count int64
-	err := ar.db.WithContext(ctx).Model(&Follow{}).Where("following_id = ?", accountID).Count(&count).Error
+	err := ar.db.WithContext(ctx).Model(&Follow{}).Where("target_id = ?", accountID).Count(&count).Error
 	return count, err
 }
 
 // GetFollowingCount 获取关注数
 func (ar *AccountRepository) GetFollowingCount(ctx context.Context, accountID uint) (int64, error) {
 	var count int64
-	err := ar.db.WithContext(ctx).Model(&Follow{}).Where("follower_id = ?", accountID).Count(&count).Error
+	err := ar.db.WithContext(ctx).Model(&Follow{}).Where("account_id = ?", accountID).Count(&count).Error
 	return count, err
 }

@@ -103,7 +103,7 @@ func (h *VideoHandler) ListVideos(c *gin.Context) {
 
 // ReportView 上报视频播放
 func (h *VideoHandler) ReportView(c *gin.Context) {
-	videoIDStr := c.Param("video_id")
+	videoIDStr := c.Param("id")
 	videoID, err := strconv.ParseUint(videoIDStr, 10, 64)
 	if err != nil {
 		apierror.AbortWithError(c, apierror.ErrInvalidID)

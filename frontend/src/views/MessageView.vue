@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useUserStore } from '@/stores/user';
 import { messageAPI, accountAPI } from '@/api';
@@ -17,21 +17,85 @@ const showSearch = ref(false);
 const searchQuery = ref('');
 const searchResults = ref<any[]>([]);
 const isLoading = ref(false);
+const messagesContainer = ref<HTMLElement | null>(null);
+
+const scrollToBottom = async () => {
+  await nextTick();
+  if (messagesContainer.value) {
+    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+  }
+};
+
+const getCacheKey = () => {
+  return `conversations_${userStore.accountId}`;
+};
 
 const loadConversations = async () => {
   try {
+    console.log('Loading conversations...');
+    
+    // 先从本地缓存加载会话列表（按用户隔离）
+    const cacheKey = getCacheKey();
+    const cachedConversations = localStorage.getItem(cacheKey);
+    if (cachedConversations) {
+      try {
+        conversations.value = JSON.parse(cachedConversations);
+        console.log('Loaded conversations from cache:', conversations.value);
+      } catch (e) {
+        console.error('Failed to parse cached conversations:', e);
+      }
+    }
+    
+    // 然后从API获取最新数据
     const response = await messageAPI.getConversations();
-    conversations.value = response.map((conv: any) => ({
-      id: conv.user_id,
-      name: conv.username,
-      avatar: conv.avatar_url,
-      last_message: conv.last_message,
-      unread: conv.unread_count,
-      time: conv.updated_at ? new Date(conv.updated_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : '刚刚'
-    }));
-  } catch (err) {
-    console.error('Failed to load conversations:', err);
+    console.log('Conversations response:', response);
+    
+    if (response && Array.isArray(response)) {
+      const newConversations = response.map((conv: any) => ({
+        id: conv.user_id,
+        name: conv.username,
+        avatar: conv.avatar_url,
+        last_message: conv.last_message,
+        unread: conv.unread_count || 0,
+        time: conv.updated_at ? formatTime(conv.updated_at) : '刚刚',
+        updated_at: conv.updated_at
+      }));
+      
+      conversations.value = newConversations;
+      console.log('Loaded conversations from API:', conversations.value);
+      
+      // 保存到本地缓存（按用户隔离）
+      localStorage.setItem(cacheKey, JSON.stringify(newConversations));
+    } else {
+      console.log('No conversations found or invalid response, keeping cached data');
+    }
+  } catch (err: any) {
+    console.error('Failed to load conversations:', err.response?.data || err);
+    // 如果API请求失败，继续使用缓存的数据
+    console.log('Using cached conversations');
   }
+};
+
+const updateConversationsCache = () => {
+  const cacheKey = getCacheKey();
+  localStorage.setItem(cacheKey, JSON.stringify(conversations.value));
+};
+
+const formatTime = (timeStr: string) => {
+  if (!timeStr) return '刚刚';
+  const date = new Date(timeStr);
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  
+  if (minutes < 1) return '刚刚';
+  if (minutes < 60) return minutes + '分钟前';
+  if (hours < 24) return hours + '小时前';
+  if (days < 7) return days + '天前';
+  
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 };
 
 const initSSE = () => {
@@ -118,6 +182,8 @@ const initSSE = () => {
 const handleNewMessage = (notification: any) => {
   const fromId = notification.from_id;
   const content = notification.content;
+  const now = new Date();
+  const nowStr = now.toISOString();
   
   // 更新消息列表
   if (currentConversation.value === fromId) {
@@ -125,9 +191,12 @@ const handleNewMessage = (notification: any) => {
       id: Date.now(),
       sender_id: fromId,
       content: content,
-      time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+      time: now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
       isMe: false
     });
+    
+    // 如果正在当前聊天窗口，滚动到底部
+    scrollToBottom();
   }
   
   // 更新会话列表
@@ -135,7 +204,8 @@ const handleNewMessage = (notification: any) => {
   if (existingConv) {
     existingConv.last_message = content;
     existingConv.unread++;
-    existingConv.time = '刚刚';
+    existingConv.time = formatTime(nowStr);
+    existingConv.updated_at = nowStr;
   } else {
     // 如果是新会话，添加到列表
     conversations.value.unshift({
@@ -144,9 +214,13 @@ const handleNewMessage = (notification: any) => {
       avatar: '',
       last_message: content,
       unread: 1,
-      time: '刚刚'
+      time: formatTime(nowStr),
+      updated_at: nowStr
     });
   }
+  
+  // 更新缓存
+  updateConversationsCache();
 };
 
 let abortController: AbortController | null = null;
@@ -172,10 +246,11 @@ const openChatWithUser = async (userId: number) => {
         id: userId,
         name: userName,
         avatar: userData.avatar_url || '',
-        lastMessage: '',
+        last_message: '',
         time: '刚刚',
         unread: 0
       });
+      updateConversationsCache();
       selectConversation(userId);
     }
   } catch (err) {
@@ -187,6 +262,7 @@ const loadMessages = async (otherId: number) => {
   try {
     const response = await messageAPI.getMessages(otherId);
     messages.value = response.messages;
+    await scrollToBottom();
   } catch (err) {
     console.error('Failed to load messages:', err);
   }
@@ -194,6 +270,14 @@ const loadMessages = async (otherId: number) => {
 
 const selectConversation = (id: number) => {
   currentConversation.value = id;
+  
+  // 清除未读计数
+  const conv = conversations.value.find(c => c.id === id);
+  if (conv) {
+    conv.unread = 0;
+    updateConversationsCache();
+  }
+  
   loadMessages(id);
 };
 
@@ -201,24 +285,87 @@ const sendMessage = async () => {
   if (!newMessage.value.trim() || !currentConversation.value) return;
   
   try {
+    const now = new Date();
+    const nowStr = now.toISOString();
+    
     await messageAPI.send(currentConversation.value, newMessage.value);
     messages.value.push({
       id: Date.now(),
       sender_id: userStore.accountId,
       content: newMessage.value,
-      time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+      time: now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
       isMe: true
     });
+    
+    // 发送消息后滚动到底部
+    await scrollToBottom();
+    
+    // 更新会话列表中的最后一条消息
+    const convIndex = conversations.value.findIndex(c => c.id === currentConversation.value);
+    if (convIndex !== -1) {
+      conversations.value[convIndex].last_message = newMessage.value;
+      conversations.value[convIndex].time = formatTime(nowStr);
+      conversations.value[convIndex].updated_at = nowStr;
+      // 将该会话移到列表顶部
+      const conv = conversations.value.splice(convIndex, 1)[0];
+      conversations.value.unshift(conv);
+      
+      // 更新缓存
+      updateConversationsCache();
+    }
+    
     newMessage.value = '';
   } catch (err) {
     console.error('Send message error:', err);
   }
 };
 
+const searchHistory = ref<string[]>([]);
+
+const loadSearchHistory = () => {
+  const history = localStorage.getItem('search_history');
+  if (history) {
+    try {
+      searchHistory.value = JSON.parse(history);
+    } catch (e) {
+      searchHistory.value = [];
+    }
+  }
+};
+
+const saveSearchHistory = () => {
+  localStorage.setItem('search_history', JSON.stringify(searchHistory.value));
+};
+
+const addSearchHistory = (query: string) => {
+  if (!query.trim()) return;
+  
+  // 移除重复项
+  searchHistory.value = searchHistory.value.filter(item => item !== query);
+  
+  // 添加到开头
+  searchHistory.value.unshift(query);
+  
+  // 只保留最近10条记录
+  if (searchHistory.value.length > 10) {
+    searchHistory.value = searchHistory.value.slice(0, 10);
+  }
+  
+  saveSearchHistory();
+};
+
+const clearSearchHistory = () => {
+  searchHistory.value = [];
+  saveSearchHistory();
+};
+
 const searchUsers = async () => {
     if (!searchQuery.value.trim()) {
       return;
     }
+    
+    // 添加到搜索历史
+    addSearchHistory(searchQuery.value);
     
     isLoading.value = true;
     try {
@@ -240,10 +387,11 @@ const startChat = (userId: number, userName: string) => {
       id: userId,
       name: userName,
       avatar: '',
-      lastMessage: '',
+      last_message: '',
       time: '刚刚',
       unread: 0
     });
+    updateConversationsCache();
     selectConversation(userId);
   }
   showSearch.value = false;
@@ -265,6 +413,7 @@ onMounted(() => {
       }
     }
   });
+  loadSearchHistory();
   initSSE();
 });
 
@@ -308,10 +457,32 @@ onUnmounted(() => {
             class="search-item"
             @click="startChat(user.id, user.username)"
           >
-            <div class="user-avatar">
-              <User :size="24" />
+            <div class="user-avatar-container">
+              <img 
+                v-if="user.avatar_url" 
+                :src="user.avatar_url" 
+                class="user-avatar-img" 
+                :alt="user.username"
+              />
+              <User v-else :size="24" />
             </div>
             <span class="user-name">{{ user.username }}</span>
+          </div>
+        </div>
+        
+        <div v-else-if="!searchQuery && searchHistory.length > 0" class="search-history">
+          <div class="history-header">
+            <span class="history-title">历史搜索</span>
+            <button class="clear-history-btn" @click="clearSearchHistory">清除</button>
+          </div>
+          <div 
+            v-for="(item, index) in searchHistory" 
+            :key="index"
+            class="history-item"
+            @click="searchQuery = item; searchUsers()"
+          >
+            <Search :size="16" />
+            <span>{{ item }}</span>
           </div>
         </div>
       </div>
@@ -324,7 +495,13 @@ onUnmounted(() => {
           @click="selectConversation(conv.id)"
         >
           <div class="conv-avatar">
-            <User :size="24" />
+            <img 
+              v-if="conv.avatar" 
+              :src="conv.avatar" 
+              class="conv-avatar-img" 
+              :alt="conv.name"
+            />
+            <User v-else :size="24" />
           </div>
           <div class="conv-info">
             <div class="conv-header">
@@ -359,7 +536,7 @@ onUnmounted(() => {
         </button>
       </header>
 
-      <div class="messages-container">
+      <div class="messages-container" ref="messagesContainer">
         <div 
           v-for="msg in messages" 
           :key="msg.id"
@@ -479,6 +656,49 @@ onUnmounted(() => {
   overflow-y: auto;
 }
 
+.search-history {
+  margin-top: 12px;
+}
+
+.history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.history-title {
+  color: #999;
+  font-size: 14px;
+}
+
+.clear-history-btn {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.clear-history-btn:hover {
+  color: #fff;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #999;
+}
+
+.history-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
 .search-item {
   display: flex;
   align-items: center;
@@ -492,7 +712,7 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.user-avatar {
+.user-avatar-container {
   width: 40px;
   height: 40px;
   background: linear-gradient(135deg, #ff0050, #ff2d55);
@@ -500,6 +720,13 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+}
+
+.user-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .user-name {
@@ -530,6 +757,13 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+}
+
+.conv-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .conv-info {

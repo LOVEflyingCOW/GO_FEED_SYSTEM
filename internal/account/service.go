@@ -3,6 +3,11 @@ package account
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
+	"mime/multipart"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -249,4 +254,54 @@ func (as *AccountService) Refresh(ctx context.Context, refreshToken string) (str
 	}
 
 	return newToken, newRefreshToken, nil
+}
+
+// UploadAvatar 上传头像
+func (as *AccountService) UploadAvatar(ctx context.Context, accountID uint, file *multipart.FileHeader) (string, error) {
+	// 检查账号是否存在
+	_, err := as.accountRepository.FindByID(ctx, accountID)
+	if err != nil {
+		return "", errors.New("account not found")
+	}
+
+	// 生成唯一文件名
+	ext := filepath.Ext(file.Filename)
+	timestamp := time.Now().Unix()
+	filename := fmt.Sprintf("avatar_%d_%d%s", accountID, timestamp, ext)
+
+	// 保存文件到上传目录
+	uploadDir := "./uploads"
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		return "", err
+	}
+
+	filePath := filepath.Join(uploadDir, filename)
+
+	src, err := file.Open()
+	if err != nil {
+		return "", err
+	}
+	defer src.Close()
+
+	dst, err := os.Create(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return "", err
+	}
+
+	// 构建头像URL
+	avatarURL := fmt.Sprintf("http://localhost:8081/uploads/%s", filename)
+
+	// 更新数据库中的头像URL
+	if err := as.accountRepository.UpdateAvatar(ctx, accountID, avatarURL); err != nil {
+		// 如果更新失败，删除已上传的文件
+		os.Remove(filePath)
+		return "", err
+	}
+
+	return avatarURL, nil
 }
